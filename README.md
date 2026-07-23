@@ -4,7 +4,7 @@
 
 NVIDIA AIR Marketplace demos
 
-![Demo screenshot](/nvidia/img/1su-partial.png)
+![Demo screenshot](img/1su-partial.png)
 
 
 [1 NVIDIA Scalability Unit topology](MetalSoft-SpectrumX-1su-demo)
