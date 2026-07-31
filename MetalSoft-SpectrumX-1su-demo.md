@@ -132,9 +132,9 @@ First, open the jumpstation console inside NVIDIA Air: open the **Nodes** tab (o
 Then install your public key from that console, so your workstation can SSH in:
 
 ```bash
-ubuntu@oob-mgmt-server:~$ mkdir -p ~/.ssh && chmod 700 ~/.ssh
-ubuntu@oob-mgmt-server:~$ echo 'ssh-ed25519 AAAA...replace-with-your-public-key... you@workstation' >> ~/.ssh/authorized_keys
-ubuntu@oob-mgmt-server:~$ chmod 600 ~/.ssh/authorized_keys
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+echo 'ssh-ed25519 AAAA...replace-with-your-public-key... you@workstation' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
 ```
 
 Finally, publish an SSH service so the jumpstation is reachable from outside. In NVIDIA Air, click **Services > Services List** and add a service on the jumpstation:
@@ -164,43 +164,51 @@ For more background on NVIDIA Air services, SSH access, SSH keys, nodes, and con
 
 This demo runs entirely from the command line, so the web UI is optional but recommended.
 
-The UI runs on the Global Controller; the steps below expose it and open it from your workstation. On the jumpstation, forward the controller's HTTPS port. These rules are not persistent, so re-apply them after every lab restart:
+The UI runs on the Global Controller; the steps below expose it and open it from your workstation.
+
+In NVIDIA Air, there should already be a MetalSoft UI service enabled.
+
+NVIDIA Air returns an external host name and port for the service (for example `worker-0375f999.dsx-air.nvidia.com` and `27544`). Note both; NVIDIA Air assigns a new external port on each restart.
+
+Connect via SSH into the `oob-mgmt-server` from your local machine or using the integrated web console. Then enable the proxy service for the external host name:
 
 ```bash
-ubuntu@oob-mgmt-server:~$ sudo sysctl -w net.ipv4.ip_forward=1
-ubuntu@oob-mgmt-server:~$ sudo iptables -t nat -A PREROUTING  -i eth0 -p tcp --dport 443 -j DNAT --to 192.168.200.3:443
-ubuntu@oob-mgmt-server:~$ sudo iptables -t nat -A POSTROUTING -p tcp -d 192.168.200.3 --dport 443 -j MASQUERADE
+ubuntu@oob-mgmt-server:~$ sudo makeproxy <external-host-name>
 ```
 
-In NVIDIA Air, publish an HTTPS service on the jumpstation, the same way you added the SSH service:
-
-- Service Name: `HTTPS`
-- Interface: `oob-mgmt-server:eth0`
-- Service Type: `HTTPS`
-- Service Port: `443`
-
-NVIDIA Air returns an external host name and port for the service (for example `worker-8f961120.dsx-air.nvidia.com` and `24371`). Note both; NVIDIA Air assigns a new external port on each restart.
-
-On the Global Controller, point the UI at that external port. Log in as `root` (`ssh -l root 192.168.200.3`, password `MetalsoftR0cks@$@$`) and run it with the port NVIDIA Air returned:
+As an example, for the external host name `worker-0375f999.dsx-air.nvidia.com` the output should be the following:
 
 ```bash
-root@192.168.200.3:~# nvidia-ms-helper 24371
+ubuntu@oob-mgmt-server:~$ sudo makeproxy worker-0375f999.dsx-air.nvidia.com
+==> Frontend: https://worker-0375f999.dsx-air.nvidia.com:443 (self-signed)
+==> Backend : https://demo.metalsoft.io:443 (CA-verified)
+==> haproxy, openssl and CA bundle already present
+==> Generating self-signed certificate for worker-0375f999.dsx-air.nvidia.com
+==> Backed up existing config to /etc/haproxy/haproxy.cfg.bak.20260731103317
+==> Validating configuration
+Configuration file is valid
+==> Enabling and restarting haproxy
+● haproxy.service - HAProxy Load Balancer
+     Loaded: loaded (/lib/systemd/system/haproxy.service; enabled; vendor preset: enabled)
+     Active: active (running) since Fri 2026-07-31 10:33:18 UTC; 5ms ago
+
+==> Done.
+    Point worker-0375f999.dsx-air.nvidia.com (or your port-forward) at this host, then open:
+      https://worker-0375f999.dsx-air.nvidia.com/
+      https://worker-0375f999.dsx-air.nvidia.com:<fwd-port>/   (via port-forward)
+    Proxied to https://demo.metalsoft.io:443
+    The cert is self-signed; clients must accept or trust it.
+    Cert file: /etc/haproxy/certs/worker-0375f999.dsx-air.nvidia.com.pem
 ```
 
-On your workstation, look up the external host's IP address (`ping` or `dig` the host name NVIDIA Air returned), then map `demo.metalsoft.io` to it in your local `/etc/hosts`:
+The proxy service from `oob-mgmt-server` uses a self-signed certificate because the external host name is dynamically allocated; the browser will warn about it. Accept the warning to continue.
 
-```
-<external-host-ip> demo.metalsoft.io
-```
-
-The controller uses a self-signed certificate, so the browser warns about it. Either accept the warning to continue, or trust the MetalSoft CA certificate on your workstation (staged on the jumpstation at `/usr/local/share/ca-certificates/metalsoft_ca.crt`).
-
-Open `https://demo.metalsoft.io:<external-port>/` in the browser, using the port from above, and log in:
+Open `https://<external-host-name>:<external-port>/` in the browser, using the port from above, and log in:
 
 - Username: `demo@metalsoft.io`
 - Password: `MetalsoftR0cks@$@$`
 
-***Note:*** The port-forward, the NVIDIA Air service port, and `nvidia-ms-helper` all reset when the lab restarts and must be re-applied.
+For our example it should be `https://worker-0375f999.dsx-air.nvidia.com:27544/`
 
 Once logged in, you can reach every MetalSoft component from the "burger" menu at the top left, next to the logo:
 
@@ -230,8 +238,8 @@ Once logged in, you can reach every MetalSoft component from the "burger" menu a
 Run the following commands:
 
 ```bash
-ubuntu@oob-mgmt-server:~$ ping -c3 192.168.200.3    # Global Controller
-ubuntu@oob-mgmt-server:~$ ping -c3 192.168.200.2    # Site Controller
+ping -c3 192.168.200.3    # Global Controller
+ping -c3 192.168.200.2    # Site Controller
 ```
 
 Expected result:
@@ -240,13 +248,14 @@ Expected result:
 
 Validation:
 
-Confirm the Site Controller has connected to the Global Controller:
+Confirm the Site Controller has connected to the Global Controller by running the following command on `oob-mgmt-server`:
 
 ```bash
-ubuntu@oob-mgmt-server:~$ metalcloud-cli site agents 1
+metalcloud-cli site agents 1
 ```
 
 ```
+ubuntu@oob-mgmt-server:~$ metalcloud-cli site agents 1
 ┌─────────────────────────────────────────────────┬────────────────────────────┬─────────┬────────────┬─────────┬───────────────────┬─────────────────────┐
 │ ID                                              │ HOSTNAME                   │ SITE    │ AGENT TYPE │ VERSION │ IP                │ LAST SEEN           │
 ├─────────────────────────────────────────────────┼────────────────────────────┼─────────┼────────────┼─────────┼───────────────────┼─────────────────────┤
@@ -267,10 +276,17 @@ ubuntu@oob-mgmt-server:~$ metalcloud-cli site agents 1
 From this point on, run every command in this lab on the `oob-mgmt-server` jumpstation from the `~/nvidia` directory. There is no need to SSH into the Global Controller unless there is a problem; see [Troubleshooting](#troubleshooting-upgrade-or-reset).
 
 ```bash
-ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli fabric create 1 spectrumx-1su-514 ethernet "Spectrum-X 1-SU (5.14)" \
+cd ~/nvidia
+metalcloud-cli fabric create 1 spectrumx-1su-514 ethernet "Spectrum-X 1-SU (5.14)" \
         --config-source ethernet-fabric.1su.yaml
-ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli fabric activate 1
-ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli subnet create --config-source oob-subnet.1su.yaml
+```
+
+```bash
+metalcloud-cli fabric activate 1
+```
+
+```bash
+metalcloud-cli subnet create --config-source oob-subnet.1su.yaml
 ```
 
 Expected result:
@@ -294,7 +310,7 @@ Validation:
 Set `fabricId` in `switches.1su.yaml` to `1`, then import the six switches:
 
 ```bash
-ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli fabric import-devices 1 --config-source switches.1su.yaml
+metalcloud-cli fabric import-devices 1 --config-source switches.1su.yaml
 ```
 
 Expected result:
@@ -320,10 +336,13 @@ Validation:
 The switch configuration in Step 5 works from each switch's discovered port inventory. Trigger discovery across every switch, then confirm one switch reports interfaces:
 
 ```bash
-ubuntu@oob-mgmt-server:~/nvidia$ for ID in $(metalcloud-cli fabric get-devices 1 -f json | jq -r '.[].id'); do
+for ID in $(metalcloud-cli fabric get-devices 1 -f json | jq -r '.[].id'); do
   metalcloud-cli network-device discover "$ID"
 done
-ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli network-device get-ports 1    # returns a list of swpNsN ports
+```
+
+```bash
+metalcloud-cli network-device get-ports 1
 ```
 
 Expected result:
@@ -337,26 +356,87 @@ The switches are imported and reachable, but MetalSoft has not configured them y
 
 Validation:
 
-Log in as `cumulus` (the password is read from `switches.1su.yaml`) and capture the baseline, so later steps have something to compare against. Each switch check in this lab runs against a single switch chosen by the `SW` variable; change `SW` and re-run to inspect another switch:
+Log in as `cumulus` (the password is read from `switches.1su.yaml`) and capture the baseline, so later steps have something to compare against.
+
+For ease of use there is a validation script named `spcx-run` located in `~/spcx-air/` that can check the current configuration of the switches. An environment variable needs to be exported for the desired topology:
 
 ```bash
-# This block inspects one switch. The two awk lines resolve SW to its management IP and the
-# cumulus password from the switch inventory; sshpass runs the commands below on the switch
-# over SSH; the trailing awk prefixes each output line with the switch name in green. The
-# commands that run on the switch are:
-#     hostname                          (its configured hostname)
-#     ip -br addr show lo               (loopback addresses)
-#     sudo vtysh -c "show bgp summary"  (BGP neighbour table, from FRR)
-ubuntu@oob-mgmt-server:~/nvidia$ SW=leaf-su00-r0    # switch to inspect; any hostname listed above, then re-run
-SWIP=$(awk -v s="$SW" '$2=="identifierString:" && $3==s{f=1} f && $1=="managementAddress:"{print $2; exit}' ~/nvidia/switches.1su.yaml)
-SWPW=$(awk '/managementPassword:/{print $2; exit}' ~/nvidia/switches.1su.yaml)
-sshpass -p "$SWPW" ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "cumulus@$SWIP" 'hostname; ip -br addr show lo; sudo vtysh -c "show bgp summary"' 2>&1 \
-  | awk -v h="$SW" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
+export SPCX_INVENTORY=~/spcx-air/inventory.1su.yml
+```
+
+```bash
+~/spcx-air/spcx-run -c "hostname"
+```
+
+```bash
+~/spcx-air/spcx-run -c "ip -br addr show lo"
+```
+
+```bash
+~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp summary\""
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "hostname"
+========================================
+Running: hostname
+========================================
+################################################################################
+leaf-su00-r0 | cumulus
+################################################################################
+leaf-su00-r1 | cumulus
+################################################################################
+leaf-su00-r2 | cumulus
+################################################################################
+leaf-su00-r3 | cumulus
+################################################################################
+spine-s00 | cumulus
+################################################################################
+spine-s01 | cumulus
+################################################################################
+
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "ip -br addr show lo"
+========================================
+Running: ip -br addr show lo
+========================================
+################################################################################
+leaf-su00-r0 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+################################################################################
+leaf-su00-r1 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+################################################################################
+leaf-su00-r2 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+################################################################################
+leaf-su00-r3 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+################################################################################
+spine-s00 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+################################################################################
+spine-s01 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+################################################################################
+
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp summary\""
+========================================
+Running: sudo vtysh -c "show bgp summary"
+========================================
+################################################################################
+leaf-su00-r0 | bgpd is not running
+################################################################################
+leaf-su00-r1 | bgpd is not running
+################################################################################
+leaf-su00-r2 | bgpd is not running
+################################################################################
+leaf-su00-r3 | bgpd is not running
+################################################################################
+spine-s00 | bgpd is not running
+################################################################################
+spine-s01 | bgpd is not running
+################################################################################
 ```
 
 Expected result:
 
-- At this stage the loopback carries only `127.0.0.1/8`, no `10.253.x.x/32` address is assigned, BGP is not running, and `nv config show -o commands` returns only the factory defaults. Re-run with `SW` set to each switch to confirm they all start clean; Steps 6 and 9 change this.
+- At this stage the loopback carries only `127.0.0.1/8`, no `10.253.x.x/32` address is assigned and BGP is not running.
 
 ### Step 5. Configure the Switches
 
@@ -405,18 +485,76 @@ Validation:
 Re-run the Step 4 check against each switch and compare with the baseline:
 
 ```bash
-# The awk lines resolve SW to its IP and password; these commands then run on the switch:
-#     hostname                     (its configured hostname)
-#     ip -br addr show lo          (loopback addresses)
-#     nv config show -o commands   (the full switch configuration, as NVUE commands)
-ubuntu@oob-mgmt-server:~/nvidia$ SW=leaf-su00-r0    # any hostname from the list in Step 4
-SWIP=$(awk -v s="$SW" '$2=="identifierString:" && $3==s{f=1} f && $1=="managementAddress:"{print $2; exit}' ~/nvidia/switches.1su.yaml)
-SWPW=$(awk '/managementPassword:/{print $2; exit}' ~/nvidia/switches.1su.yaml)
-sshpass -p "$SWPW" ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "cumulus@$SWIP" 'hostname; ip -br addr show lo; nv config show -o commands' 2>&1 \
-  | awk -v h="$SW" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
+~/spcx-air/spcx-run -c "hostname"
 ```
 
-The switch now reports its assigned hostname and a `10.253.128.x/32` loopback (`leaf-su00-r0` is `10.253.128.1`, `r1` is `.2`, and so on), and `nv config show -o commands` returns the full configuration where the baseline showed only defaults.
+```bash
+~/spcx-air/spcx-run -c "ip -br addr show lo"
+```
+
+```bash
+~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp summary\""
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "hostname"
+========================================
+Running: hostname
+========================================
+################################################################################
+leaf-su00-r0 | leaf-su00-r0
+################################################################################
+leaf-su00-r1 | leaf-su00-r1
+################################################################################
+leaf-su00-r2 | leaf-su00-r2
+################################################################################
+leaf-su00-r3 | leaf-su00-r3
+################################################################################
+spine-s00 | spine-s00
+################################################################################
+spine-s01 | spine-s01
+################################################################################
+
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "ip -br addr show lo"
+========================================
+Running: ip -br addr show lo
+========================================
+################################################################################
+leaf-su00-r0 | lo               UNKNOWN        127.0.0.1/8 10.253.128.1/32 ::1/128
+################################################################################
+leaf-su00-r1 | lo               UNKNOWN        127.0.0.1/8 10.253.128.2/32 ::1/128
+################################################################################
+leaf-su00-r2 | lo               UNKNOWN        127.0.0.1/8 10.253.128.3/32 ::1/128
+################################################################################
+leaf-su00-r3 | lo               UNKNOWN        127.0.0.1/8 10.253.128.4/32 ::1/128
+################################################################################
+spine-s00 | lo               UNKNOWN        127.0.0.1/8 10.253.128.5/32 ::1/128
+################################################################################
+spine-s01 | lo               UNKNOWN        127.0.0.1/8 10.253.128.6/32 ::1/128
+################################################################################
+
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp summary\""
+========================================
+Running: sudo vtysh -c "show bgp summary"
+========================================
+################################################################################
+leaf-su00-r0 | bgpd is not running
+################################################################################
+leaf-su00-r1 | bgpd is not running
+################################################################################
+leaf-su00-r2 | bgpd is not running
+################################################################################
+leaf-su00-r3 | bgpd is not running
+################################################################################
+spine-s00 | bgpd is not running
+################################################################################
+spine-s01 | bgpd is not running
+################################################################################
+```
+
+The switch now reports its assigned hostname and a `10.253.128.x/32` loopback (`leaf-su00-r0` is `10.253.128.1`, `r1` is `.2`, and so on) and BGP is not running.
 
 ### Step 7. Discover Links and Redeploy
 
@@ -430,6 +568,9 @@ The switch now reports its assigned hostname and a `10.253.128.x/32` loopback (`
 
 ```bash
 ubuntu@oob-mgmt-server:~/nvidia$ wait_for_job_group "$(metalcloud-cli fabric rescan-links 1 -f json | jq -r '.jobGroupId')"
+```
+
+```bash
 ubuntu@oob-mgmt-server:~/nvidia$ wait_for_job_group "$(metalcloud-cli fabric deploy 1 -f json | jq -r '.jobGroupId')"
 ```
 
@@ -442,13 +583,85 @@ Validation:
 Confirm a switch now sees its neighbours over LLDP:
 
 ```bash
-# The awk lines resolve SW to its IP and password; this command then runs on the switch:
-#     nv show interface lldp   (the LLDP neighbour discovered on each port)
-ubuntu@oob-mgmt-server:~/nvidia$ SW=leaf-su00-r0    # any hostname from the list in Step 4
-SWIP=$(awk -v s="$SW" '$2=="identifierString:" && $3==s{f=1} f && $1=="managementAddress:"{print $2; exit}' ~/nvidia/switches.1su.yaml)
-SWPW=$(awk '/managementPassword:/{print $2; exit}' ~/nvidia/switches.1su.yaml)
-sshpass -p "$SWPW" ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "cumulus@$SWIP" 'nv show interface lldp' 2>&1 \
-  | awk -v h="$SW" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
+~/spcx-air/spcx-run -c "nv show interface lldp"
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "nv show interface lldp"
+========================================
+Running: nv show interface lldp
+========================================
+################################################################################
+leaf-su00-r0 | Interface  Speed  Type  Remote Host             Remote Port
+leaf-su00-r0 | ---------  -----  ----  ----------------------  -----------
+leaf-su00-r0 | eth0       1G     eth   oob-mgmt-switch-leaf-1  swp6
+leaf-su00-r0 | swp33s0    1G     swp   spine-s00               swp1s0
+leaf-su00-r0 | swp33s1    1G     swp   spine-s00               swp1s1
+leaf-su00-r0 | swp34s0    1G     swp   spine-s00               swp2s0
+leaf-su00-r0 | swp34s1    1G     swp   spine-s00               swp2s1
+leaf-su00-r0 | swp35s0    1G     swp   spine-s00               swp3s0
+leaf-su00-r0 | swp35s1    1G     swp   spine-s00               swp3s1
+leaf-su00-r0 | swp36s0    1G     swp   spine-s00               swp4s0
+leaf-su00-r0 | swp36s1    1G     swp   spine-s00               swp4s1
+leaf-su00-r0 | swp37s0    1G     swp   spine-s00               swp5s0
+leaf-su00-r0 | swp37s1    1G     swp   spine-s00               swp5s1
+leaf-su00-r0 | swp38s0    1G     swp   spine-s00               swp6s0
+leaf-su00-r0 | swp38s1    1G     swp   spine-s00               swp6s1
+leaf-su00-r0 | swp39s0    1G     swp   spine-s00               swp7s0
+leaf-su00-r0 | swp39s1    1G     swp   spine-s00               swp7s1
+leaf-su00-r0 | swp40s0    1G     swp   spine-s00               swp8s0
+leaf-su00-r0 | swp40s1    1G     swp   spine-s00               swp8s1
+leaf-su00-r0 | swp41s0    1G     swp   spine-s00               swp9s0
+leaf-su00-r0 | swp41s1    1G     swp   spine-s00               swp9s1
+leaf-su00-r0 | swp42s0    1G     swp   spine-s00               swp10s0
+leaf-su00-r0 | swp42s1    1G     swp   spine-s00               swp10s1
+leaf-su00-r0 | swp43s0    1G     swp   spine-s00               swp11s0
+leaf-su00-r0 | swp43s1    1G     swp   spine-s00               swp11s1
+leaf-su00-r0 | swp44s0    1G     swp   spine-s00               swp12s0
+leaf-su00-r0 | swp44s1    1G     swp   spine-s00               swp12s1
+leaf-su00-r0 | swp45s0    1G     swp   spine-s00               swp13s0
+leaf-su00-r0 | swp45s1    1G     swp   spine-s00               swp13s1
+leaf-su00-r0 | swp46s0    1G     swp   spine-s00               swp14s0
+leaf-su00-r0 | swp46s1    1G     swp   spine-s00               swp14s1
+leaf-su00-r0 | swp47s0    1G     swp   spine-s00               swp15s0
+leaf-su00-r0 | swp47s1    1G     swp   spine-s00               swp15s1
+leaf-su00-r0 | swp48s0    1G     swp   spine-s00               swp16s0
+leaf-su00-r0 | swp48s1    1G     swp   spine-s00               swp16s1
+leaf-su00-r0 | swp49s0    1G     swp   spine-s01               swp1s0
+leaf-su00-r0 | swp49s1    1G     swp   spine-s01               swp1s1
+leaf-su00-r0 | swp50s0    1G     swp   spine-s01               swp2s0
+leaf-su00-r0 | swp50s1    1G     swp   spine-s01               swp2s1
+leaf-su00-r0 | swp51s0    1G     swp   spine-s01               swp3s0
+leaf-su00-r0 | swp51s1    1G     swp   spine-s01               swp3s1
+leaf-su00-r0 | swp52s0    1G     swp   spine-s01               swp4s0
+leaf-su00-r0 | swp52s1    1G     swp   spine-s01               swp4s1
+leaf-su00-r0 | swp53s0    1G     swp   spine-s01               swp5s0
+leaf-su00-r0 | swp53s1    1G     swp   spine-s01               swp5s1
+leaf-su00-r0 | swp54s0    1G     swp   spine-s01               swp6s0
+leaf-su00-r0 | swp54s1    1G     swp   spine-s01               swp6s1
+leaf-su00-r0 | swp55s0    1G     swp   spine-s01               swp7s0
+leaf-su00-r0 | swp55s1    1G     swp   spine-s01               swp7s1
+leaf-su00-r0 | swp56s0    1G     swp   spine-s01               swp8s0
+leaf-su00-r0 | swp56s1    1G     swp   spine-s01               swp8s1
+leaf-su00-r0 | swp57s0    1G     swp   spine-s01               swp9s0
+leaf-su00-r0 | swp57s1    1G     swp   spine-s01               swp9s1
+leaf-su00-r0 | swp58s0    1G     swp   spine-s01               swp10s0
+leaf-su00-r0 | swp58s1    1G     swp   spine-s01               swp10s1
+leaf-su00-r0 | swp59s0    1G     swp   spine-s01               swp11s0
+leaf-su00-r0 | swp59s1    1G     swp   spine-s01               swp11s1
+leaf-su00-r0 | swp60s0    1G     swp   spine-s01               swp12s0
+leaf-su00-r0 | swp60s1    1G     swp   spine-s01               swp12s1
+leaf-su00-r0 | swp61s0    1G     swp   spine-s01               swp13s0
+leaf-su00-r0 | swp61s1    1G     swp   spine-s01               swp13s1
+leaf-su00-r0 | swp62s0    1G     swp   spine-s01               swp14s0
+leaf-su00-r0 | swp62s1    1G     swp   spine-s01               swp14s1
+leaf-su00-r0 | swp63s0    1G     swp   spine-s01               swp15s0
+leaf-su00-r0 | swp63s1    1G     swp   spine-s01               swp15s1
+leaf-su00-r0 | swp64s0    1G     swp   spine-s01               swp16s0
+leaf-su00-r0 | swp64s1    1G     swp   spine-s01               swp16s1
+################################################################################
 ```
 
 Each fabric-facing port lists the neighbour it discovered: a leaf sees its spines, and a spine sees the leaves below it.
@@ -472,6 +685,9 @@ Each fabric-facing port lists the neighbour it discovered: a leaf sees its spine
 ```bash
 ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli fabric configure-freeform 1 \
         --config-source fabric-config.1su.l3evpn.yaml --verify-render
+```
+
+```bash
 ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli fabric configure-bgp 1 \
         --config-source fabric-config.1su.l3evpn.yaml --verify-render
 ```
@@ -509,15 +725,194 @@ Validation:
 Compare with the Step 4 baseline, where BGP was not running. This prints the underlay and EVPN overlay summaries together:
 
 ```bash
-# The awk lines resolve SW to its IP and password; this runs on the switch, in one vtysh
-# session with two show commands:
-#     show bgp summary             (underlay BGP neighbour table)
-#     show bgp l2vpn evpn summary  (EVPN overlay neighbour table)
-ubuntu@oob-mgmt-server:~/nvidia$ SW=leaf-su00-r0    # any hostname from the list in Step 4
-SWIP=$(awk -v s="$SW" '$2=="identifierString:" && $3==s{f=1} f && $1=="managementAddress:"{print $2; exit}' ~/nvidia/switches.1su.yaml)
-SWPW=$(awk '/managementPassword:/{print $2; exit}' ~/nvidia/switches.1su.yaml)
-sshpass -p "$SWPW" ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "cumulus@$SWIP" 'sudo vtysh -c "show bgp summary" -c "show bgp l2vpn evpn summary"' 2>&1 \
-  | awk -v h="$SW" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
+~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp summary\""
+```
+
+```bash
+~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp l2vpn evpn summary\""
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp summary\""
+========================================
+Running: sudo vtysh -c "show bgp summary"
+========================================
+################################################################################
+leaf-su00-r0 |
+leaf-su00-r0 | IPv4 Unicast Summary:
+leaf-su00-r0 | BGP router identifier 10.253.128.1, local AS number 4200000000 VRF default vrf-id 0
+leaf-su00-r0 | BGP table version 9
+leaf-su00-r0 | RIB entries 11, using 1408 bytes of memory
+leaf-su00-r0 | Peers 64, using 1280 KiB of memory
+leaf-su00-r0 | Peer groups 2, using 128 bytes of memory
+leaf-su00-r0 |
+leaf-su00-r0 | Neighbor               V         AS   MsgRcvd   MsgSent   TblVer  InQ OutQ  Up/Down State/PfxRcd   PfxSnt Desc
+leaf-su00-r0 | spine-s00(10.254.0.1)  4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp1s0
+leaf-su00-r0 | spine-s00(10.254.0.3)  4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp1s1
+leaf-su00-r0 | spine-s00(10.254.0.5)  4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp2s0
+leaf-su00-r0 | spine-s00(10.254.0.7)  4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp2s1
+leaf-su00-r0 | spine-s00(10.254.0.9)  4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp3s0
+leaf-su00-r0 | spine-s00(10.254.0.11) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp3s1
+leaf-su00-r0 | spine-s00(10.254.0.13) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp4s0
+leaf-su00-r0 | spine-s00(10.254.0.15) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp4s1
+leaf-su00-r0 | spine-s00(10.254.0.17) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp5s0
+leaf-su00-r0 | spine-s00(10.254.0.19) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp5s1
+leaf-su00-r0 | spine-s00(10.254.0.21) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp6s0
+leaf-su00-r0 | spine-s00(10.254.0.23) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp6s1
+leaf-su00-r0 | spine-s00(10.254.0.25) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp7s0
+leaf-su00-r0 | spine-s00(10.254.0.27) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp7s1
+leaf-su00-r0 | spine-s00(10.254.0.29) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp8s0
+leaf-su00-r0 | spine-s00(10.254.0.31) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp8s1
+leaf-su00-r0 | spine-s00(10.254.0.33) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp9s0
+leaf-su00-r0 | spine-s00(10.254.0.35) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp9s1
+leaf-su00-r0 | spine-s00(10.254.0.37) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp10s0
+leaf-su00-r0 | spine-s00(10.254.0.39) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp10s1
+leaf-su00-r0 | spine-s00(10.254.0.41) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp11s0
+leaf-su00-r0 | spine-s00(10.254.0.43) 4 4201000000        63        67        9    0    0 00:02:47            4        6 to_spine-s00_swp11s1
+leaf-su00-r0 | spine-s00(10.254.0.45) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp12s0
+leaf-su00-r0 | spine-s00(10.254.0.47) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp12s1
+leaf-su00-r0 | spine-s00(10.254.0.49) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp13s0
+leaf-su00-r0 | spine-s00(10.254.0.51) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp13s1
+leaf-su00-r0 | spine-s00(10.254.0.53) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp14s0
+leaf-su00-r0 | spine-s00(10.254.0.55) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp14s1
+leaf-su00-r0 | spine-s00(10.254.0.57) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp15s0
+leaf-su00-r0 | spine-s00(10.254.0.59) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp15s1
+leaf-su00-r0 | spine-s00(10.254.0.61) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp16s0
+leaf-su00-r0 | spine-s00(10.254.0.63) 4 4201000000        63        68        9    0    0 00:02:47            4        6 to_spine-s00_swp16s1
+leaf-su00-r0 | spine-s01(10.254.1.1)  4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp1s0
+leaf-su00-r0 | spine-s01(10.254.1.3)  4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp1s1
+leaf-su00-r0 | spine-s01(10.254.1.5)  4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp2s0
+leaf-su00-r0 | spine-s01(10.254.1.7)  4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp2s1
+leaf-su00-r0 | spine-s01(10.254.1.9)  4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp3s0
+leaf-su00-r0 | spine-s01(10.254.1.11) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp3s1
+leaf-su00-r0 | spine-s01(10.254.1.13) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp4s0
+leaf-su00-r0 | spine-s01(10.254.1.15) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp4s1
+leaf-su00-r0 | spine-s01(10.254.1.17) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp5s0
+leaf-su00-r0 | spine-s01(10.254.1.19) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp5s1
+leaf-su00-r0 | spine-s01(10.254.1.21) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp6s0
+leaf-su00-r0 | spine-s01(10.254.1.23) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp6s1
+leaf-su00-r0 | spine-s01(10.254.1.25) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp7s0
+leaf-su00-r0 | spine-s01(10.254.1.27) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp7s1
+leaf-su00-r0 | spine-s01(10.254.1.29) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp8s0
+leaf-su00-r0 | spine-s01(10.254.1.31) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp8s1
+leaf-su00-r0 | spine-s01(10.254.1.33) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp9s0
+leaf-su00-r0 | spine-s01(10.254.1.35) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp9s1
+leaf-su00-r0 | spine-s01(10.254.1.37) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp10s0
+leaf-su00-r0 | spine-s01(10.254.1.39) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp10s1
+leaf-su00-r0 | spine-s01(10.254.1.41) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp11s0
+leaf-su00-r0 | spine-s01(10.254.1.43) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp11s1
+leaf-su00-r0 | spine-s01(10.254.1.45) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp12s0
+leaf-su00-r0 | spine-s01(10.254.1.47) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp12s1
+leaf-su00-r0 | spine-s01(10.254.1.49) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp13s0
+leaf-su00-r0 | spine-s01(10.254.1.51) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp13s1
+leaf-su00-r0 | spine-s01(10.254.1.53) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp14s0
+leaf-su00-r0 | spine-s01(10.254.1.55) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp14s1
+leaf-su00-r0 | spine-s01(10.254.1.57) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp15s0
+leaf-su00-r0 | spine-s01(10.254.1.59) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp15s1
+leaf-su00-r0 | spine-s01(10.254.1.61) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp16s0
+leaf-su00-r0 | spine-s01(10.254.1.63) 4 4201000000        63        68        9    0    0 00:02:46            4        6 to_spine-s01_swp16s1
+leaf-su00-r0 |
+leaf-su00-r0 | Total number of neighbors 64
+leaf-su00-r0 |
+leaf-su00-r0 | L2VPN EVPN Summary:
+leaf-su00-r0 | BGP router identifier 10.253.128.1, local AS number 4200000000 VRF default vrf-id 0
+leaf-su00-r0 | BGP table version 0
+leaf-su00-r0 | RIB entries 0, using 0 bytes of memory
+leaf-su00-r0 | Peers 2, using 40 KiB of memory
+leaf-su00-r0 | Peer groups 2, using 128 bytes of memory
+leaf-su00-r0 |
+leaf-su00-r0 | Neighbor                V         AS   MsgRcvd   MsgSent   TblVer  InQ OutQ  Up/Down State/PfxRcd   PfxSnt Desc
+leaf-su00-r0 | spine-s00(10.253.128.5) 4 4201000000        42        47        0    0    0 00:01:58            0        0 to_spine-s00_loopbac
+leaf-su00-r0 | spine-s01(10.253.128.6) 4 4201000000        42        47        0    0    0 00:01:59            0        0 to_spine-s01_loopbac
+leaf-su00-r0 |
+leaf-su00-r0 | Total number of neighbors 2
+################################################################################
+```
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp l2vpn evpn summary\""
+========================================
+Running: sudo vtysh -c "show bgp l2vpn evpn summary"
+========================================
+################################################################################
+leaf-su00-r0 | BGP router identifier 10.253.128.1, local AS number 4200000000 VRF default vrf-id 0
+leaf-su00-r0 | BGP table version 0
+leaf-su00-r0 | RIB entries 0, using 0 bytes of memory
+leaf-su00-r0 | Peers 2, using 40 KiB of memory
+leaf-su00-r0 | Peer groups 2, using 128 bytes of memory
+leaf-su00-r0 |
+leaf-su00-r0 | Neighbor                V         AS   MsgRcvd   MsgSent   TblVer  InQ OutQ  Up/Down State/PfxRcd   PfxSnt Desc
+leaf-su00-r0 | spine-s00(10.253.128.5) 4 4201000000        45        50        0    0    0 00:02:06            0        0 to_spine-s00_loopbac
+leaf-su00-r0 | spine-s01(10.253.128.6) 4 4201000000        45        50        0    0    0 00:02:07            0        0 to_spine-s01_loopbac
+leaf-su00-r0 |
+leaf-su00-r0 | Total number of neighbors 2
+################################################################################
+leaf-su00-r1 | BGP router identifier 10.253.128.2, local AS number 4200000001 VRF default vrf-id 0
+leaf-su00-r1 | BGP table version 0
+leaf-su00-r1 | RIB entries 0, using 0 bytes of memory
+leaf-su00-r1 | Peers 2, using 40 KiB of memory
+leaf-su00-r1 | Peer groups 2, using 128 bytes of memory
+leaf-su00-r1 |
+leaf-su00-r1 | Neighbor                V         AS   MsgRcvd   MsgSent   TblVer  InQ OutQ  Up/Down State/PfxRcd   PfxSnt Desc
+leaf-su00-r1 | spine-s00(10.253.128.5) 4 4201000000        45        50        0    0    0 00:02:06            0        0 to_spine-s00_loopbac
+leaf-su00-r1 | spine-s01(10.253.128.6) 4 4201000000        45        50        0    0    0 00:02:07            0        0 to_spine-s01_loopbac
+leaf-su00-r1 |
+leaf-su00-r1 | Total number of neighbors 2
+################################################################################
+leaf-su00-r2 | BGP router identifier 10.253.128.3, local AS number 4200000002 VRF default vrf-id 0
+leaf-su00-r2 | BGP table version 0
+leaf-su00-r2 | RIB entries 0, using 0 bytes of memory
+leaf-su00-r2 | Peers 2, using 40 KiB of memory
+leaf-su00-r2 | Peer groups 2, using 128 bytes of memory
+leaf-su00-r2 |
+leaf-su00-r2 | Neighbor                V         AS   MsgRcvd   MsgSent   TblVer  InQ OutQ  Up/Down State/PfxRcd   PfxSnt Desc
+leaf-su00-r2 | spine-s00(10.253.128.5) 4 4201000000        45        50        0    0    0 00:02:07            0        0 to_spine-s00_loopbac
+leaf-su00-r2 | spine-s01(10.253.128.6) 4 4201000000        45        50        0    0    0 00:02:07            0        0 to_spine-s01_loopbac
+leaf-su00-r2 |
+leaf-su00-r2 | Total number of neighbors 2
+################################################################################
+leaf-su00-r3 | BGP router identifier 10.253.128.4, local AS number 4200000003 VRF default vrf-id 0
+leaf-su00-r3 | BGP table version 0
+leaf-su00-r3 | RIB entries 0, using 0 bytes of memory
+leaf-su00-r3 | Peers 2, using 40 KiB of memory
+leaf-su00-r3 | Peer groups 2, using 128 bytes of memory
+leaf-su00-r3 |
+leaf-su00-r3 | Neighbor                V         AS   MsgRcvd   MsgSent   TblVer  InQ OutQ  Up/Down State/PfxRcd   PfxSnt Desc
+leaf-su00-r3 | spine-s00(10.253.128.5) 4 4201000000        45        50        0    0    0 00:02:06            0        0 to_spine-s00_loopbac
+leaf-su00-r3 | spine-s01(10.253.128.6) 4 4201000000        45        50        0    0    0 00:02:07            0        0 to_spine-s01_loopbac
+leaf-su00-r3 |
+leaf-su00-r3 | Total number of neighbors 2
+################################################################################
+spine-s00 | BGP router identifier 10.253.128.5, local AS number 4201000000 VRF default vrf-id 0
+spine-s00 | BGP table version 0
+spine-s00 | RIB entries 0, using 0 bytes of memory
+spine-s00 | Peers 4, using 80 KiB of memory
+spine-s00 | Peer groups 2, using 128 bytes of memory
+spine-s00 |
+spine-s00 | Neighbor                   V         AS   MsgRcvd   MsgSent   TblVer  InQ OutQ  Up/Down State/PfxRcd   PfxSnt Desc
+spine-s00 | leaf-su00-r0(10.253.128.1) 4 4200000000        45        45        0    0    0 00:02:07            0        0 to_leaf-su00-r0_loop
+spine-s00 | leaf-su00-r1(10.253.128.2) 4 4200000001        45        45        0    0    0 00:02:07            0        0 to_leaf-su00-r1_loop
+spine-s00 | leaf-su00-r2(10.253.128.3) 4 4200000002        45        45        0    0    0 00:02:07            0        0 to_leaf-su00-r2_loop
+spine-s00 | leaf-su00-r3(10.253.128.4) 4 4200000003        45        45        0    0    0 00:02:07            0        0 to_leaf-su00-r3_loop
+spine-s00 |
+spine-s00 | Total number of neighbors 4
+################################################################################
+spine-s01 | BGP router identifier 10.253.128.6, local AS number 4201000000 VRF default vrf-id 0
+spine-s01 | BGP table version 0
+spine-s01 | RIB entries 0, using 0 bytes of memory
+spine-s01 | Peers 4, using 80 KiB of memory
+spine-s01 | Peer groups 2, using 128 bytes of memory
+spine-s01 |
+spine-s01 | Neighbor                   V         AS   MsgRcvd   MsgSent   TblVer  InQ OutQ  Up/Down State/PfxRcd   PfxSnt Desc
+spine-s01 | leaf-su00-r0(10.253.128.1) 4 4200000000        45        45        0    0    0 00:02:06            0        0 to_leaf-su00-r0_loop
+spine-s01 | leaf-su00-r1(10.253.128.2) 4 4200000001        45        45        0    0    0 00:02:06            0        0 to_leaf-su00-r1_loop
+spine-s01 | leaf-su00-r2(10.253.128.3) 4 4200000002        45        45        0    0    0 00:02:06            0        0 to_leaf-su00-r2_loop
+spine-s01 | leaf-su00-r3(10.253.128.4) 4 4200000003        45        45        0    0    0 00:02:06            0        0 to_leaf-su00-r3_loop
+spine-s01 |
+spine-s01 | Total number of neighbors 4
+################################################################################
 ```
 
 Every switch now has established underlay sessions, each with a non-zero prefix count in place of `Idle` or `Active`. The EVPN overlay runs between the leaves and the relay spines `spine-s00` and `spine-s01`, so the EVPN summary is populated on the leaves and on those two spines.
@@ -561,8 +956,11 @@ Confirm all four endpoints are listed. Do not rename them; the Terraform manifes
 **Expected wait time:** A few seconds.
 
 ```bash
-ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli route-domain create --config-source route-domain.1su.yaml
-ubuntu@oob-mgmt-server:~/nvidia$ metalcloud-cli logical-network-profile create vxlan --config-source l3-profile.1su.yaml
+metalcloud-cli route-domain create --config-source route-domain.1su.yaml
+```
+
+```bash
+metalcloud-cli logical-network-profile create vxlan --config-source l3-profile.1su.yaml
 ```
 
 Expected result:
@@ -584,13 +982,48 @@ Validation:
 **Expected wait time:** About 5 minutes.
 
 ```bash
-ubuntu@oob-mgmt-server:~/nvidia$ cd ~/nvidia/terraform/
-ubuntu@oob-mgmt-server:~/nvidia/terraform$ terraform init
-ubuntu@oob-mgmt-server:~/nvidia/terraform$ terraform apply -auto-approve
-ubuntu@oob-mgmt-server:~/nvidia/terraform$ cd ~/nvidia
+cd ~/nvidia/terraform/
+terraform init
+terraform apply -auto-approve
+cd ~/nvidia
 ```
 
 Expected result:
+
+```bash
+Plan: 7 to add, 0 to change, 0 to destroy.
+metalcloud_infrastructure.infra: Creating...
+metalcloud_infrastructure.infra: Creation complete after 0s
+metalcloud_logical_network.network1: Creating...
+metalcloud_logical_network.network1: Creation complete after 0s [name=network1]
+metalcloud_endpoint_instance_group.hgx-su00-h00: Creating...
+metalcloud_endpoint_instance_group.hgx-su00-h00: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-su00-h08: Creating...
+metalcloud_endpoint_instance_group.hgx-su00-h08: Creation complete after 1s
+metalcloud_endpoint_instance_group.hgx-su00-h16: Creating...
+metalcloud_endpoint_instance_group.hgx-su00-h16: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-su00-h24: Creating...
+metalcloud_endpoint_instance_group.hgx-su00-h24: Creation complete after 0s
+metalcloud_infrastructure_deployer.infrastructure_deployer: Creating...
+metalcloud_infrastructure_deployer.infrastructure_deployer: Creation complete after 0s
+
+Apply complete! Resources: 7 added, 0 changed, 0 destroyed.
+```
+
+Before continuing with the checks, confirm that the Terraform deployment has finished. The following command refreshes every 10 seconds; leave it running until the deploy status shows finished:
+
+```bash
+watch -n 10 "metalcloud-cli infrastructure list"
+```
+Use control+C to stop the watch at any time.
+
+```
+┌────┬─────────┬──────────────┬────────┬───────┬──────┬─────────────────────┬─────────────────────┬───────────────┬───────────┐
+│ ID │ LABEL   │ CONFIG LABEL │ STATUS │ OWNER │ SITE │ CREATED             │ UPDATED             │ DEPLOY STATUS │ DEPLOY ID │
+├────┼─────────┼──────────────┼────────┼───────┼──────┼─────────────────────┼─────────────────────┼───────────────┼───────────┤
+│  1 │ tenant1 │ tenant1      │ active │     1 │    1 │ 16 Jul 26 15:26 UTC │ 16 Jul 26 15:30 UTC │ finished      │           │
+└────┴─────────┴──────────────┴────────┴───────┴──────┴─────────────────────┴─────────────────────┴───────────────┴───────────┘
+```
 
 - When the apply completes, the attached hosts' rail gateways are live.
 
@@ -603,17 +1036,211 @@ Validation:
 Terraform created the tenant VRF, attached the endpoints, and deployed. The tenant VRF and the host rail gateways live on the leaves. Inspect a leaf:
 
 ```bash
-# The awk lines resolve SW to its IP and password; these commands then run on the switch,
-# all scoped to the tenant1 VRF:
-#     ip -br link show type vrf                            (VRFs present, including tenant1)
-#     ip -br addr show vrf tenant1 | grep -E "swp|172\."   (rail gateway /31s in the VRF)
-#     sudo vtysh -c "show bgp vrf tenant1 ipv4 unicast"    (tenant routes learned by BGP)
-#              -c "show ip route vrf tenant1"              (the tenant VRF routing table)
-ubuntu@oob-mgmt-server:~/nvidia$ SW=leaf-su00-r0    # a leaf: leaf-su00-r0, leaf-su00-r1, leaf-su00-r2, leaf-su00-r3
-SWIP=$(awk -v s="$SW" '$2=="identifierString:" && $3==s{f=1} f && $1=="managementAddress:"{print $2; exit}' ~/nvidia/switches.1su.yaml)
-SWPW=$(awk '/managementPassword:/{print $2; exit}' ~/nvidia/switches.1su.yaml)
-sshpass -p "$SWPW" ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "cumulus@$SWIP" 'ip -br link show type vrf; ip -br addr show vrf tenant1 | grep -E "swp|172\."; sudo vtysh -c "show bgp vrf tenant1 ipv4 unicast" -c "show ip route vrf tenant1"' 2>&1 \
-  | awk -v h="$SW" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
+~/spcx-air/spcx-run -c "ip -br link show type vrf"
+```
+
+```bash
+~/spcx-air/spcx-run -c "ip -br addr show vrf tenant1 | grep -E \"swp|172\.\""
+```
+
+```bash
+~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp vrf tenant1 ipv4 unicast\""
+```
+
+```bash
+~/spcx-air/spcx-run -c "sudo vtysh -c \"show ip route vrf tenant1\""
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "ip -br link show type vrf"
+========================================
+Running: ip -br link show type vrf
+========================================
+################################################################################
+leaf-su00-r0 | mgmt             UP             0a:09:ca:03:c7:9a <NOARP,MASTER,UP,LOWER_UP>
+leaf-su00-r0 | tenant1          UP             06:2e:fb:e3:89:ce <NOARP,MASTER,UP,LOWER_UP>
+################################################################################
+leaf-su00-r1 | mgmt             UP             fa:a6:2b:7a:de:ff <NOARP,MASTER,UP,LOWER_UP>
+leaf-su00-r1 | tenant1          UP             6a:40:fb:63:c5:30 <NOARP,MASTER,UP,LOWER_UP>
+################################################################################
+leaf-su00-r2 | mgmt             UP             5e:5c:d1:be:29:6f <NOARP,MASTER,UP,LOWER_UP>
+leaf-su00-r2 | tenant1          UP             de:e9:6f:71:70:d7 <NOARP,MASTER,UP,LOWER_UP>
+################################################################################
+leaf-su00-r3 | mgmt             UP             ca:1c:20:a8:fd:1f <NOARP,MASTER,UP,LOWER_UP>
+leaf-su00-r3 | tenant1          UP             e2:e1:20:bf:d9:5e <NOARP,MASTER,UP,LOWER_UP>
+################################################################################
+spine-s00 | mgmt             UP             32:22:1c:22:e8:04 <NOARP,MASTER,UP,LOWER_UP>
+################################################################################
+spine-s01 | mgmt             UP             1e:44:c0:66:a8:28 <NOARP,MASTER,UP,LOWER_UP>
+################################################################################
+```
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "ip -br addr show vrf tenant1 | grep -E \"swp|172\.\""
+========================================
+Running: ip -br addr show vrf tenant1 | grep -E "swp|172\."
+========================================
+################################################################################
+leaf-su00-r0 | swp1s0           UP             172.16.0.1/31 fe80::4ab0:2dff:fea2:de1c/64
+leaf-su00-r0 | swp1s1           UP             172.24.0.1/31 fe80::4ab0:2dff:fe08:12c6/64
+leaf-su00-r0 | swp9s0           UP             172.16.0.17/31 fe80::4ab0:2dff:feef:9af8/64
+leaf-su00-r0 | swp9s1           UP             172.24.0.17/31 fe80::4ab0:2dff:fe00:de8f/64
+leaf-su00-r0 | swp17s0          UP             172.16.0.33/31 fe80::4ab0:2dff:fef5:49c4/64
+leaf-su00-r0 | swp17s1          UP             172.24.0.33/31 fe80::4ab0:2dff:fe9e:e970/64
+leaf-su00-r0 | swp25s0          UP             172.16.0.49/31 fe80::4ab0:2dff:fe95:6e03/64
+leaf-su00-r0 | swp25s1          UP             172.24.0.49/31 fe80::4ab0:2dff:fe9b:ee7/64
+################################################################################
+leaf-su00-r1 | swp1s0           UP             172.18.0.1/31 fe80::4ab0:2dff:fe30:371c/64
+leaf-su00-r1 | swp1s1           UP             172.26.0.1/31 fe80::4ab0:2dff:fe9a:7591/64
+leaf-su00-r1 | swp9s0           UP             172.18.0.17/31 fe80::4ab0:2dff:fe21:cec3/64
+leaf-su00-r1 | swp9s1           UP             172.26.0.17/31 fe80::4ab0:2dff:fe32:5c09/64
+leaf-su00-r1 | swp17s0          UP             172.18.0.33/31 fe80::4ab0:2dff:fecc:6255/64
+leaf-su00-r1 | swp17s1          UP             172.26.0.33/31 fe80::4ab0:2dff:fe61:4efb/64
+leaf-su00-r1 | swp25s0          UP             172.18.0.49/31 fe80::4ab0:2dff:fe11:c578/64
+leaf-su00-r1 | swp25s1          UP             172.26.0.49/31 fe80::4ab0:2dff:fe3f:97ea/64
+################################################################################
+leaf-su00-r2 | swp1s0           UP             172.20.0.1/31 fe80::4ab0:2dff:fe93:1a35/64
+leaf-su00-r2 | swp1s1           UP             172.28.0.1/31 fe80::4ab0:2dff:fe08:e8ff/64
+leaf-su00-r2 | swp9s0           UP             172.20.0.17/31 fe80::4ab0:2dff:fe34:eb83/64
+leaf-su00-r2 | swp9s1           UP             172.28.0.17/31 fe80::4ab0:2dff:fe04:592d/64
+leaf-su00-r2 | swp17s0          UP             172.20.0.33/31 fe80::4ab0:2dff:fe54:17de/64
+leaf-su00-r2 | swp17s1          UP             172.28.0.33/31 fe80::4ab0:2dff:fe09:a1b/64
+leaf-su00-r2 | swp25s0          UP             172.20.0.49/31 fe80::4ab0:2dff:feb2:b0c5/64
+leaf-su00-r2 | swp25s1          UP             172.28.0.49/31 fe80::4ab0:2dff:fe99:16e3/64
+################################################################################
+leaf-su00-r3 | swp1s0           UP             172.22.0.1/31 fe80::4ab0:2dff:fe0e:409e/64
+leaf-su00-r3 | swp1s1           UP             172.30.0.1/31 fe80::4ab0:2dff:fe83:3fd5/64
+leaf-su00-r3 | swp9s0           UP             172.22.0.17/31 fe80::4ab0:2dff:fe81:43e2/64
+leaf-su00-r3 | swp9s1           UP             172.30.0.17/31 fe80::4ab0:2dff:fe4a:bb39/64
+leaf-su00-r3 | swp17s0          UP             172.22.0.33/31 fe80::4ab0:2dff:fe8f:aad2/64
+leaf-su00-r3 | swp17s1          UP             172.30.0.33/31 fe80::4ab0:2dff:fe0c:f578/64
+leaf-su00-r3 | swp25s0          UP             172.22.0.49/31 fe80::4ab0:2dff:fea4:1e4c/64
+leaf-su00-r3 | swp25s1          UP             172.30.0.49/31 fe80::4ab0:2dff:fe98:acee/64
+################################################################################
+spine-s00 | Error: argument "tenant1" is wrong: Not a valid VRF name
+################################################################################
+spine-s01 | Error: argument "tenant1" is wrong: Not a valid VRF name
+################################################################################
+```
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp vrf tenant1 ipv4 unicast\""
+========================================
+Running: sudo vtysh -c "show bgp vrf tenant1 ipv4 unicast"
+========================================
+################################################################################
+leaf-su00-r0 | BGP table version is 80, local router ID is 10.253.128.1, vrf id 132
+leaf-su00-r0 | Default local pref 100, local AS 4200000000
+leaf-su00-r0 | Status codes:  s suppressed, d damped, h history, u unsorted, * valid, > best, = multipath, + multipath nhg,
+leaf-su00-r0 |                i internal, r RIB-failure, S Stale, R Removed
+leaf-su00-r0 | Nexthop codes: @NNN nexthop's vrf id, < announce-nh-self
+leaf-su00-r0 | Origin codes:  i - IGP, e - EGP, ? - incomplete
+leaf-su00-r0 | RPKI validation codes: V valid, I invalid, N Not found
+leaf-su00-r0 |
+leaf-su00-r0 |     Network          Next Hop            Metric LocPrf Weight Path
+leaf-su00-r0 |  *> 172.16.0.0/26    0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  s> 172.16.0.0/31    0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  s> 172.16.0.16/31   0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  s> 172.16.0.32/31   0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  s> 172.16.0.48/31   0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  *> 172.18.0.0/26    10.253.128.2(spine-s00)<
+leaf-su00-r0 |                                                            0 4201000000 4200000001 ?
+leaf-su00-r0 |  *                   10.253.128.2(spine-s01)<
+leaf-su00-r0 |                                                            0 4201000000 4200000001 ?
+leaf-su00-r0 |  *> 172.20.0.0/26    10.253.128.3(spine-s00)<
+leaf-su00-r0 |                                                            0 4201000000 4200000002 ?
+leaf-su00-r0 |  *                   10.253.128.3(spine-s01)<
+leaf-su00-r0 |                                                            0 4201000000 4200000002 ?
+leaf-su00-r0 |  *> 172.22.0.0/26    10.253.128.4(spine-s00)<
+leaf-su00-r0 |                                                            0 4201000000 4200000003 ?
+leaf-su00-r0 |  *                   10.253.128.4(spine-s01)<
+leaf-su00-r0 |                                                            0 4201000000 4200000003 ?
+leaf-su00-r0 |  *> 172.24.0.0/26    0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  s> 172.24.0.0/31    0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  s> 172.24.0.16/31   0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  s> 172.24.0.32/31   0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  s> 172.24.0.48/31   0.0.0.0(leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |  *> 172.26.0.0/26    10.253.128.2(spine-s00)<
+leaf-su00-r0 |                                                            0 4201000000 4200000001 ?
+leaf-su00-r0 |  *                   10.253.128.2(spine-s01)<
+leaf-su00-r0 |                                                            0 4201000000 4200000001 ?
+leaf-su00-r0 |  *> 172.28.0.0/26    10.253.128.3(spine-s00)<
+leaf-su00-r0 |                                                            0 4201000000 4200000002 ?
+leaf-su00-r0 |  *                   10.253.128.3(spine-s01)<
+leaf-su00-r0 |                                                            0 4201000000 4200000002 ?
+leaf-su00-r0 |  *> 172.30.0.0/26    10.253.128.4(spine-s00)<
+leaf-su00-r0 |                                                            0 4201000000 4200000003 ?
+leaf-su00-r0 |  *                   10.253.128.4(spine-s01)<
+leaf-su00-r0 |                                                            0 4201000000 4200000003 ?
+leaf-su00-r0 |
+leaf-su00-r0 | Displayed 16 routes and 22 total paths
+################################################################################
+
+################################################################################
+spine-s00 | View/Vrf tenant1 is unknown
+################################################################################
+spine-s01 | View/Vrf tenant1 is unknown
+################################################################################
+```
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show ip route vrf tenant1\""
+========================================
+Running: sudo vtysh -c "show ip route vrf tenant1"
+========================================
+################################################################################
+leaf-su00-r0 | Codes: K - kernel route, C - connected, L - local, S - static,
+leaf-su00-r0 |        R - RIP, O - OSPF, I - IS-IS, B - BGP, E - EIGRP, N - NHRP,
+leaf-su00-r0 |        T - Table, A - Babel, D - SHARP, F - PBR, f - OpenFabric,
+leaf-su00-r0 |        t - Table-Direct, Z - FRR,
+leaf-su00-r0 |        > - selected route, * - FIB route, q - queued, r - rejected, b - backup
+leaf-su00-r0 |        t - trapped, o - offload failure
+leaf-su00-r0 |
+leaf-su00-r0 | VRF tenant1:
+leaf-su00-r0 | K>* 0.0.0.0/0 [255/8192] unreachable (ICMP unreachable), 00:49:36
+leaf-su00-r0 | B>* 172.16.0.0/26 [200/0] unreachable (blackhole) (vrf default), weight 1, 00:49:06
+leaf-su00-r0 | C>* 172.16.0.0/31 is directly connected, swp1s0, 00:49:36
+leaf-su00-r0 | L>* 172.16.0.1/32 is directly connected, swp1s0, 00:49:36
+leaf-su00-r0 | C>* 172.16.0.16/31 is directly connected, swp9s0, 00:49:36
+leaf-su00-r0 | L>* 172.16.0.17/32 is directly connected, swp9s0, 00:49:36
+leaf-su00-r0 | C>* 172.16.0.32/31 is directly connected, swp17s0, 00:49:36
+leaf-su00-r0 | L>* 172.16.0.33/32 is directly connected, swp17s0, 00:49:36
+leaf-su00-r0 | C>* 172.16.0.48/31 is directly connected, swp25s0, 00:49:36
+leaf-su00-r0 | L>* 172.16.0.49/32 is directly connected, swp25s0, 00:49:36
+leaf-su00-r0 | B>* 172.18.0.0/26 [20/0] via 10.253.128.2, vlan1440_l3 onlink, weight 1, 00:48:28
+leaf-su00-r0 | B>* 172.20.0.0/26 [20/0] via 10.253.128.3, vlan1440_l3 onlink, weight 1, 00:47:51
+leaf-su00-r0 | B>* 172.22.0.0/26 [20/0] via 10.253.128.4, vlan1440_l3 onlink, weight 1, 00:47:12
+leaf-su00-r0 | B>* 172.24.0.0/26 [200/0] unreachable (blackhole) (vrf default), weight 1, 00:49:06
+leaf-su00-r0 | C>* 172.24.0.0/31 is directly connected, swp1s1, 00:49:36
+leaf-su00-r0 | L>* 172.24.0.1/32 is directly connected, swp1s1, 00:49:36
+leaf-su00-r0 | C>* 172.24.0.16/31 is directly connected, swp9s1, 00:49:36
+leaf-su00-r0 | L>* 172.24.0.17/32 is directly connected, swp9s1, 00:49:36
+leaf-su00-r0 | C>* 172.24.0.32/31 is directly connected, swp17s1, 00:49:36
+leaf-su00-r0 | L>* 172.24.0.33/32 is directly connected, swp17s1, 00:49:36
+leaf-su00-r0 | C>* 172.24.0.48/31 is directly connected, swp25s1, 00:49:36
+leaf-su00-r0 | L>* 172.24.0.49/32 is directly connected, swp25s1, 00:49:36
+leaf-su00-r0 | B>* 172.26.0.0/26 [20/0] via 10.253.128.2, vlan1440_l3 onlink, weight 1, 00:48:28
+leaf-su00-r0 | B>* 172.28.0.0/26 [20/0] via 10.253.128.3, vlan1440_l3 onlink, weight 1, 00:47:51
+leaf-su00-r0 | B>* 172.30.0.0/26 [20/0] via 10.253.128.4, vlan1440_l3 onlink, weight 1, 00:47:12
+################################################################################
+
+################################################################################
+spine-s00 | % VRF tenant1 not found
+################################################################################
+spine-s01 | % VRF tenant1 not found
+################################################################################
 ```
 
 `tenant1` appears in the VRF list, the host-facing `swp` ports carry their `172.x` rail gateway `/31`s inside it, and the VRF routing table holds both the local rail subnets and the remote ones learned over EVPN.
@@ -621,14 +1248,91 @@ sshpass -p "$SWPW" ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "cumu
 The spines do not hold the tenant VRF; that lives on the leaves. On the EVPN overlay relay you can see the type-5 host routes it re-advertises:
 
 ```bash
-# The awk lines resolve SW to its IP and password; this command runs on the relay switch:
-#     sudo vtysh -c "show bgp l2vpn evpn route type prefix"
-#         (the EVPN type-5 host routes this switch re-advertises)
-ubuntu@oob-mgmt-server:~/nvidia$ SW=spine-s00    # the overlay relay: spine-s00, spine-s01
-SWIP=$(awk -v s="$SW" '$2=="identifierString:" && $3==s{f=1} f && $1=="managementAddress:"{print $2; exit}' ~/nvidia/switches.1su.yaml)
-SWPW=$(awk '/managementPassword:/{print $2; exit}' ~/nvidia/switches.1su.yaml)
-sshpass -p "$SWPW" ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "cumulus@$SWIP" 'sudo vtysh -c "show bgp l2vpn evpn route type prefix"' 2>&1 \
-  | awk -v h="$SW" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
+~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp l2vpn evpn route type prefix\""
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp l2vpn evpn route type prefix\""
+========================================
+Running: sudo vtysh -c "show bgp l2vpn evpn route type prefix"
+========================================
+################################################################################
+leaf-su00-r0 | BGP table version is 2, local router ID is 10.253.128.1
+leaf-su00-r0 | Status codes: s suppressed, d damped, h history, * valid, > best, i - internal
+leaf-su00-r0 | Origin codes: i - IGP, e - EGP, ? - incomplete
+leaf-su00-r0 | EVPN type-1 prefix: [1]:[EthTag]:[ESI]:[IPlen]:[VTEP-IP]:[Frag-id]
+leaf-su00-r0 | EVPN type-2 prefix: [2]:[EthTag]:[MAClen]:[MAC]:[IPlen]:[IP]
+leaf-su00-r0 | EVPN type-3 prefix: [3]:[EthTag]:[IPlen]:[OrigIP]
+leaf-su00-r0 | EVPN type-4 prefix: [4]:[ESI]:[IPlen]:[OrigIP]
+leaf-su00-r0 | EVPN type-5 prefix: [5]:[EthTag]:[IPlen]:[IP]
+leaf-su00-r0 |
+leaf-su00-r0 |    Network          Next Hop            Metric LocPrf Weight Path
+leaf-su00-r0 |                     Extended Community
+leaf-su00-r0 | Route Distinguisher: 10.253.128.1:19999
+leaf-su00-r0 |  *> [5]:[0]:[26]:[172.16.0.0] RD 10.253.128.1:19999
+leaf-su00-r0 |                     10.253.128.1 (leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |                     ET:8 RT:59904:19999 Rmac:44:38:39:22:01:cd
+leaf-su00-r0 |  *> [5]:[0]:[26]:[172.24.0.0] RD 10.253.128.1:19999
+leaf-su00-r0 |                     10.253.128.1 (leaf-su00-r0)
+leaf-su00-r0 |                                              0         32768 ?
+leaf-su00-r0 |                     ET:8 RT:59904:19999 Rmac:44:38:39:22:01:cd
+leaf-su00-r0 | Route Distinguisher: 10.253.128.2:19999
+leaf-su00-r0 |  *> [5]:[0]:[26]:[172.18.0.0] RD 10.253.128.2:19999
+leaf-su00-r0 |                     10.253.128.2 (spine-s00)
+leaf-su00-r0 |                                                            0 4201000000 4200000001 ?
+leaf-su00-r0 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+leaf-su00-r0 |  *  [5]:[0]:[26]:[172.18.0.0] RD 10.253.128.2:19999
+leaf-su00-r0 |                     10.253.128.2 (spine-s01)
+leaf-su00-r0 |                                                            0 4201000000 4200000001 ?
+leaf-su00-r0 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+leaf-su00-r0 |  *> [5]:[0]:[26]:[172.26.0.0] RD 10.253.128.2:19999
+leaf-su00-r0 |                     10.253.128.2 (spine-s00)
+leaf-su00-r0 |                                                            0 4201000000 4200000001 ?
+leaf-su00-r0 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+leaf-su00-r0 |  *  [5]:[0]:[26]:[172.26.0.0] RD 10.253.128.2:19999
+leaf-su00-r0 |                     10.253.128.2 (spine-s01)
+leaf-su00-r0 |                                                            0 4201000000 4200000001 ?
+leaf-su00-r0 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+leaf-su00-r0 | Route Distinguisher: 10.253.128.3:19999
+leaf-su00-r0 |  *> [5]:[0]:[26]:[172.20.0.0] RD 10.253.128.3:19999
+leaf-su00-r0 |                     10.253.128.3 (spine-s00)
+leaf-su00-r0 |                                                            0 4201000000 4200000002 ?
+leaf-su00-r0 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+leaf-su00-r0 |  *  [5]:[0]:[26]:[172.20.0.0] RD 10.253.128.3:19999
+leaf-su00-r0 |                     10.253.128.3 (spine-s01)
+leaf-su00-r0 |                                                            0 4201000000 4200000002 ?
+leaf-su00-r0 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+leaf-su00-r0 |  *> [5]:[0]:[26]:[172.28.0.0] RD 10.253.128.3:19999
+leaf-su00-r0 |                     10.253.128.3 (spine-s00)
+leaf-su00-r0 |                                                            0 4201000000 4200000002 ?
+leaf-su00-r0 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+leaf-su00-r0 |  *  [5]:[0]:[26]:[172.28.0.0] RD 10.253.128.3:19999
+leaf-su00-r0 |                     10.253.128.3 (spine-s01)
+leaf-su00-r0 |                                                            0 4201000000 4200000002 ?
+leaf-su00-r0 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+leaf-su00-r0 | Route Distinguisher: 10.253.128.4:19999
+leaf-su00-r0 |  *> [5]:[0]:[26]:[172.22.0.0] RD 10.253.128.4:19999
+leaf-su00-r0 |                     10.253.128.4 (spine-s00)
+leaf-su00-r0 |                                                            0 4201000000 4200000003 ?
+leaf-su00-r0 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+leaf-su00-r0 |  *  [5]:[0]:[26]:[172.22.0.0] RD 10.253.128.4:19999
+leaf-su00-r0 |                     10.253.128.4 (spine-s01)
+leaf-su00-r0 |                                                            0 4201000000 4200000003 ?
+leaf-su00-r0 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+leaf-su00-r0 |  *> [5]:[0]:[26]:[172.30.0.0] RD 10.253.128.4:19999
+leaf-su00-r0 |                     10.253.128.4 (spine-s00)
+leaf-su00-r0 |                                                            0 4201000000 4200000003 ?
+leaf-su00-r0 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+leaf-su00-r0 |  *  [5]:[0]:[26]:[172.30.0.0] RD 10.253.128.4:19999
+leaf-su00-r0 |                     10.253.128.4 (spine-s01)
+leaf-su00-r0 |                                                            0 4201000000 4200000003 ?
+leaf-su00-r0 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+leaf-su00-r0 |
+leaf-su00-r0 | Displayed 8 prefixes (14 paths) (of requested type)
+################################################################################
 ```
 
 This is the control-plane state behind the host-to-host reachability that Step 14 verifies from the hosts.
@@ -661,46 +1365,145 @@ The complete per-host netplan files are staged on the jumpstation under `netplan
 First, capture each host's rail state *before* applying netplan, so there is a baseline to compare against. The `eth_rail` NICs carry no `172.x` addresses yet and the routing table holds no rail routes:
 
 ```bash
-export SSHPASS=nvidia   # the HGX hosts are ubuntu:nvidia
-for ip in 192.168.200.{17..20}; do
-  host=$(sshpass -e ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "ubuntu@$ip" hostname 2>/dev/null)
-  sshpass -e ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "ubuntu@$ip" 'ip -br address show; ip route show' 2>&1 \
-    | awk -v h="${host:-$ip}" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
-done
+~/spcx-air/spcx-run -s ip -br a
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -s ip -br a
+Running: ip -br a
+
+################################################################################
+hgx-su00-h00 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+hgx-su00-h00 | eth0             UP             192.168.200.17/24 metric 100 fe80::4638:39ff:fe11:111/64
+hgx-su00-h00 | eth_rail0        DOWN
+hgx-su00-h00 | eth_rail1        DOWN
+hgx-su00-h00 | eth_rail2        DOWN
+hgx-su00-h00 | eth_rail3        DOWN
+hgx-su00-h00 | eth_rail4        DOWN
+hgx-su00-h00 | eth_rail5        DOWN
+hgx-su00-h00 | eth_rail6        DOWN
+hgx-su00-h00 | eth_rail7        DOWN
+################################################################################
+hgx-su00-h08 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+hgx-su00-h08 | eth0             UP             192.168.200.18/24 metric 100 fe80::4638:39ff:fe11:112/64
+hgx-su00-h08 | eth_rail0        DOWN
+hgx-su00-h08 | eth_rail1        DOWN
+hgx-su00-h08 | eth_rail2        DOWN
+hgx-su00-h08 | eth_rail3        DOWN
+hgx-su00-h08 | eth_rail4        DOWN
+hgx-su00-h08 | eth_rail5        DOWN
+hgx-su00-h08 | eth_rail6        DOWN
+hgx-su00-h08 | eth_rail7        DOWN
+################################################################################
+hgx-su00-h16 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+hgx-su00-h16 | eth0             UP             192.168.200.19/24 metric 100 fe80::4638:39ff:fe11:113/64
+hgx-su00-h16 | eth_rail0        DOWN
+hgx-su00-h16 | eth_rail1        DOWN
+hgx-su00-h16 | eth_rail2        DOWN
+hgx-su00-h16 | eth_rail3        DOWN
+hgx-su00-h16 | eth_rail4        DOWN
+hgx-su00-h16 | eth_rail5        DOWN
+hgx-su00-h16 | eth_rail6        DOWN
+hgx-su00-h16 | eth_rail7        DOWN
+################################################################################
+hgx-su00-h24 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+hgx-su00-h24 | eth0             UP             192.168.200.20/24 metric 100 fe80::4638:39ff:fe11:114/64
+hgx-su00-h24 | eth_rail0        DOWN
+hgx-su00-h24 | eth_rail1        DOWN
+hgx-su00-h24 | eth_rail2        DOWN
+hgx-su00-h24 | eth_rail3        DOWN
+hgx-su00-h24 | eth_rail4        DOWN
+hgx-su00-h24 | eth_rail5        DOWN
+hgx-su00-h24 | eth_rail6        DOWN
+hgx-su00-h24 | eth_rail7        DOWN
+################################################################################
 ```
 
 Now push each host the file named for it and apply it. This loop reads each host's name, copies its file, installs it with mode 0600, and runs `netplan apply`:
 
 ```bash
-export SSHPASS=nvidia   # the HGX hosts are ubuntu:nvidia
-for ip in 192.168.200.{17..20}; do
-  host=$(sshpass -e ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "ubuntu@$ip" hostname 2>/dev/null)
-  {
-    sshpass -e scp -o StrictHostKeyChecking=no "netplan/1su/$host.yaml" "ubuntu@$ip:/tmp/60-spectrum-x.yaml" &&
-    sshpass -e ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "ubuntu@$ip" \
-      'sudo install -m 600 /tmp/60-spectrum-x.yaml /etc/netplan/60-spectrum-x.yaml && sudo netplan apply && rm -f /tmp/60-spectrum-x.yaml' &&
-    echo "netplan applied"
-  } 2>&1 | awk -v h="${host:-$ip}" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
-done
+ ~/spcx-air/spcx-run --apply-netplan ~/spcx-air/fabric/1su/hosts/
 ```
 
-Keying on `hostname` makes the loop correct no matter which management address NVIDIA Air gave each host. The lab's `ubuntu` user has passwordless `sudo`; if yours does not, run the two `sudo` commands by hand on each host after copying its file.
+The expected output should be the following:
 
-Expected result:
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$  ~/spcx-air/spcx-run --apply-netplan ~/spcx-air/fabric/1su/hosts/
+Applying per-host netplan from: /home/ubuntu/spcx-air/fabric/1su/hosts
+Target: hgx_hosts
 
-- Each host's output is prefixed with its name in green. A clean apply prints `netplan applied`, and any `scp` or `netplan` warnings appear under the same host label.
+################################################################################
+hgx-su00-h00 | (no output)
+################################################################################
+hgx-su00-h08 | (no output)
+################################################################################
+hgx-su00-h16 | (no output)
+################################################################################
+hgx-su00-h24 | (no output)
+################################################################################
+```
 
 Validation:
 
-Re-run the baseline commands to see the effect of the netplan change. Each `eth_rail` NIC is now `UP` with its `/31` address, and the routing table has gained the per-rail `/15` and `/12` rail routes (via each rail gateway) that carry the RoCE traffic, none of which were present in the baseline above:
+Re-run the commands to see the effect of the netplan change. Each `eth_rail` NIC is now `UP` with its `/31` address, and the routing table has gained the per-rail `/15` and `/12` rail routes (via each rail gateway) that carry the RoCE traffic, none of which were present in the baseline above:
 
 ```bash
-export SSHPASS=nvidia   # the HGX hosts are ubuntu:nvidia
-for ip in 192.168.200.{17..20}; do
-  host=$(sshpass -e ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "ubuntu@$ip" hostname 2>/dev/null)
-  sshpass -e ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "ubuntu@$ip" 'ip -br address show; ip route show' 2>&1 \
-    | awk -v h="${host:-$ip}" '{ printf "\033[1;92m%s\033[0m | %s\n", h, $0 }'
-done
+~/spcx-air/spcx-run -s ip -br a
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -s ip -br a
+Running: ip -br a
+
+################################################################################
+hgx-su00-h00 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+hgx-su00-h00 | eth0             UP             192.168.200.17/24 metric 100 fe80::4638:39ff:fe11:111/64
+hgx-su00-h00 | eth_rail0        UP             172.16.0.0/31 fe80::4ab0:2dff:fe58:140a/64
+hgx-su00-h00 | eth_rail1        UP             172.18.0.0/31 fe80::4ab0:2dff:fe21:355e/64
+hgx-su00-h00 | eth_rail2        UP             172.20.0.0/31 fe80::4ab0:2dff:fe72:b4b8/64
+hgx-su00-h00 | eth_rail3        UP             172.22.0.0/31 fe80::4ab0:2dff:fe86:769e/64
+hgx-su00-h00 | eth_rail4        UP             172.24.0.0/31 fe80::4ab0:2dff:fedf:dfe7/64
+hgx-su00-h00 | eth_rail5        UP             172.26.0.0/31 fe80::4ab0:2dff:fef5:1bad/64
+hgx-su00-h00 | eth_rail6        UP             172.28.0.0/31 fe80::4ab0:2dff:fedd:4980/64
+hgx-su00-h00 | eth_rail7        UP             172.30.0.0/31 fe80::4ab0:2dff:fea2:cff3/64
+################################################################################
+hgx-su00-h08 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+hgx-su00-h08 | eth0             UP             192.168.200.18/24 metric 100 fe80::4638:39ff:fe11:112/64
+hgx-su00-h08 | eth_rail0        UP             172.16.0.16/31 fe80::4ab0:2dff:fe02:2041/64
+hgx-su00-h08 | eth_rail1        UP             172.18.0.16/31 fe80::4ab0:2dff:fec9:e6c5/64
+hgx-su00-h08 | eth_rail2        UP             172.20.0.16/31 fe80::4ab0:2dff:feea:4e4f/64
+hgx-su00-h08 | eth_rail3        UP             172.22.0.16/31 fe80::4ab0:2dff:fe33:877a/64
+hgx-su00-h08 | eth_rail4        UP             172.24.0.16/31 fe80::4ab0:2dff:fe01:bff/64
+hgx-su00-h08 | eth_rail5        UP             172.26.0.16/31 fe80::4ab0:2dff:feab:80e7/64
+hgx-su00-h08 | eth_rail6        UP             172.28.0.16/31 fe80::4ab0:2dff:fe10:a63a/64
+hgx-su00-h08 | eth_rail7        UP             172.30.0.16/31 fe80::4ab0:2dff:fec0:62cb/64
+################################################################################
+hgx-su00-h16 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+hgx-su00-h16 | eth0             UP             192.168.200.19/24 metric 100 fe80::4638:39ff:fe11:113/64
+hgx-su00-h16 | eth_rail0        UP             172.16.0.32/31 fe80::4ab0:2dff:fe8c:37a3/64
+hgx-su00-h16 | eth_rail1        UP             172.18.0.32/31 fe80::4ab0:2dff:fe1f:1ceb/64
+hgx-su00-h16 | eth_rail2        UP             172.20.0.32/31 fe80::4ab0:2dff:fe97:904c/64
+hgx-su00-h16 | eth_rail3        UP             172.22.0.32/31 fe80::4ab0:2dff:fe1e:3c2/64
+hgx-su00-h16 | eth_rail4        UP             172.24.0.32/31 fe80::4ab0:2dff:fedb:5e58/64
+hgx-su00-h16 | eth_rail5        UP             172.26.0.32/31 fe80::4ab0:2dff:fe5a:2595/64
+hgx-su00-h16 | eth_rail6        UP             172.28.0.32/31 fe80::4ab0:2dff:fed9:9a07/64
+hgx-su00-h16 | eth_rail7        UP             172.30.0.32/31 fe80::4ab0:2dff:fe62:c79a/64
+################################################################################
+hgx-su00-h24 | lo               UNKNOWN        127.0.0.1/8 ::1/128
+hgx-su00-h24 | eth0             UP             192.168.200.20/24 metric 100 fe80::4638:39ff:fe11:114/64
+hgx-su00-h24 | eth_rail0        UP             172.16.0.48/31 fe80::4ab0:2dff:fe53:b590/64
+hgx-su00-h24 | eth_rail1        UP             172.18.0.48/31 fe80::4ab0:2dff:fe31:da81/64
+hgx-su00-h24 | eth_rail2        UP             172.20.0.48/31 fe80::4ab0:2dff:fe4c:555d/64
+hgx-su00-h24 | eth_rail3        UP             172.22.0.48/31 fe80::4ab0:2dff:fea9:688f/64
+hgx-su00-h24 | eth_rail4        UP             172.24.0.48/31 fe80::4ab0:2dff:fe0c:5c1b/64
+hgx-su00-h24 | eth_rail5        UP             172.26.0.48/31 fe80::4ab0:2dff:fea4:b192/64
+hgx-su00-h24 | eth_rail6        UP             172.28.0.48/31 fe80::4ab0:2dff:feb3:a50a/64
+hgx-su00-h24 | eth_rail7        UP             172.30.0.48/31 fe80::4ab0:2dff:fe0a:53e9/64
+################################################################################
 ```
 
 ### Step 14. Verify Connectivity
@@ -713,57 +1516,109 @@ done
 
 **Expected wait time:** Up to about 30 seconds per host for BGP/EVPN to finish converging.
 
-Before running the checks, confirm that the Terraform deployment from Step 12 has finished. The following command refreshes every 10 seconds; leave it running until the deploy status shows finished:
-
-```bash
-ubuntu@oob-mgmt-server:~/nvidia$ watch -n 10 "metalcloud-cli infrastructure list"
-```
-Use control+C to stop the watch at any time.
-
-```
-┌────┬─────────┬──────────────┬────────┬───────┬──────┬─────────────────────┬─────────────────────┬───────────────┬───────────┐
-│ ID │ LABEL   │ CONFIG LABEL │ STATUS │ OWNER │ SITE │ CREATED             │ UPDATED             │ DEPLOY STATUS │ DEPLOY ID │
-├────┼─────────┼──────────────┼────────┼───────┼──────┼─────────────────────┼─────────────────────┼───────────────┼───────────┤
-│  1 │ tenant1 │ tenant1      │ active │     1 │    1 │ 16 Jul 26 15:26 UTC │ 16 Jul 26 15:30 UTC │ finished      │           │
-└────┴─────────┴──────────────┴────────┴───────┴──────┴─────────────────────┴─────────────────────┴───────────────┴───────────┘
-```
-
 The rail `/31`s live only on the hosts, so the ping sweep has to run on each host, not on the jumpstation. This block drives all four hosts from the jumpstation: it SSHes in with the lab credentials and runs the full rail mesh on each one, covering all eight rails across all four hosts (32 targets per host):
 
 ```bash
-export SSHPASS=nvidia   # the HGX hosts are ubuntu:nvidia
+RAILS0="172.16.0.0 172.16.0.16 172.16.0.32 172.16.0.48"
+~/spcx-air/spcx-run -s -c "fping -c2 -t500 $RAILS0 2>&1"
+```
 
-# Runs on each host: ping every host on all eight rails, retrying for up to ~30s so any
-# rail still converging right after the deploy has time to come up. A target drops off the
-# retry list as soon as it answers; only targets still down at the end count as failures.
-mesh='targets=""
-for r in 16 18 20 22 24 26 28 30; do        # eth_rail0 .. eth_rail7 (second octet)
-  for h in 0 16 32 48; do targets="$targets 172.$r.0.$h"; done   # h00 h08 h16 h24
-done
-pending="$targets"
-for attempt in 1 2 3 4 5 6; do
-  still=""
-  for ip in $pending; do ping -c1 -W2 "$ip" >/dev/null 2>&1 || still="$still $ip"; done
-  pending="$still"; [ -z "$pending" ] && break
-  sleep 5
-done
-total=0; for ip in $targets; do total=$((total + 1)); done
-fail=0;  for ip in $pending; do echo "FAIL $ip"; fail=$((fail + 1)); done
-echo "host mesh: $((total - fail)) passed, $fail failed"'
+```bash
+~/spcx-air/spcx-run -s -c "for ip in $RAILS0; do ping -c2 -W2 \$ip >/dev/null 2>&1 && echo \"PASS \$ip\" || echo \"FAIL \$ip\"; done"
+```
 
-for ip in 192.168.200.{17..20}; do
-  host=$(sshpass -e ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "ubuntu@$ip" hostname 2>/dev/null)
-  sshpass -e ssh -n -o ConnectTimeout=10 -o StrictHostKeyChecking=no "ubuntu@$ip" "$mesh" 2>&1 \
-    | awk -v h="${host:-$ip}" '
-        { s=$0
-          if (s ~ /^FAIL /) { s="\033[91m" s "\033[0m" }
-          else {
-            gsub(/[0-9]+ passed/,      "\033[92m&\033[0m", s)
-            gsub(/[1-9][0-9]* failed/, "\033[91m&\033[0m", s)
-          }
-          printf "\033[1;92m%s\033[0m | %s\n", h, s
-        }'
-done
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -s -c "fping -c2 -t500 $RAILS0 2>&1"
+========================================
+Running: fping -c2 -t500 172.16.0.0 172.16.0.16 172.16.0.32 172.16.0.48 2>&1
+========================================
+################################################################################
+hgx-su00-h00 | 172.16.0.0  : [0], 64 bytes, 0.050 ms (0.050 avg, 0% loss)
+hgx-su00-h00 | 172.16.0.16 : [0], 64 bytes, 0.590 ms (0.590 avg, 0% loss)
+hgx-su00-h00 | 172.16.0.32 : [0], 64 bytes, 0.543 ms (0.543 avg, 0% loss)
+hgx-su00-h00 | 172.16.0.48 : [0], 64 bytes, 0.609 ms (0.609 avg, 0% loss)
+hgx-su00-h00 | 172.16.0.0  : [1], 64 bytes, 0.028 ms (0.039 avg, 0% loss)
+hgx-su00-h00 | 172.16.0.16 : [1], 64 bytes, 0.926 ms (0.758 avg, 0% loss)
+hgx-su00-h00 | 172.16.0.32 : [1], 64 bytes, 0.935 ms (0.739 avg, 0% loss)
+hgx-su00-h00 | 172.16.0.48 : [1], 64 bytes, 0.934 ms (0.771 avg, 0% loss)
+hgx-su00-h00 |
+hgx-su00-h00 | 172.16.0.0  : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.028/0.039/0.050
+hgx-su00-h00 | 172.16.0.16 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.590/0.758/0.926
+hgx-su00-h00 | 172.16.0.32 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.543/0.739/0.935
+hgx-su00-h00 | 172.16.0.48 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.609/0.771/0.934
+################################################################################
+hgx-su00-h08 | 172.16.0.0  : [0], 64 bytes, 1.60 ms (1.60 avg, 0% loss)
+hgx-su00-h08 | 172.16.0.16 : [0], 64 bytes, 0.055 ms (0.055 avg, 0% loss)
+hgx-su00-h08 | 172.16.0.32 : [0], 64 bytes, 0.483 ms (0.483 avg, 0% loss)
+hgx-su00-h08 | 172.16.0.48 : [0], 64 bytes, 0.610 ms (0.610 avg, 0% loss)
+hgx-su00-h08 | 172.16.0.0  : [1], 64 bytes, 1.09 ms (1.34 avg, 0% loss)
+hgx-su00-h08 | 172.16.0.16 : [1], 64 bytes, 0.028 ms (0.041 avg, 0% loss)
+hgx-su00-h08 | 172.16.0.32 : [1], 64 bytes, 0.569 ms (0.526 avg, 0% loss)
+hgx-su00-h08 | 172.16.0.48 : [1], 64 bytes, 0.672 ms (0.641 avg, 0% loss)
+hgx-su00-h08 |
+hgx-su00-h08 | 172.16.0.0  : xmt/rcv/%loss = 2/2/0%, min/avg/max = 1.09/1.34/1.60
+hgx-su00-h08 | 172.16.0.16 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.028/0.041/0.055
+hgx-su00-h08 | 172.16.0.32 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.483/0.526/0.569
+hgx-su00-h08 | 172.16.0.48 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.610/0.641/0.672
+################################################################################
+hgx-su00-h16 | 172.16.0.0  : [0], 64 bytes, 1.02 ms (1.02 avg, 0% loss)
+hgx-su00-h16 | 172.16.0.16 : [0], 64 bytes, 0.614 ms (0.614 avg, 0% loss)
+hgx-su00-h16 | 172.16.0.32 : [0], 64 bytes, 0.026 ms (0.026 avg, 0% loss)
+hgx-su00-h16 | 172.16.0.48 : [0], 64 bytes, 0.799 ms (0.799 avg, 0% loss)
+hgx-su00-h16 | 172.16.0.0  : [1], 64 bytes, 0.888 ms (0.953 avg, 0% loss)
+hgx-su00-h16 | 172.16.0.16 : [1], 64 bytes, 0.671 ms (0.642 avg, 0% loss)
+hgx-su00-h16 | 172.16.0.32 : [1], 64 bytes, 0.013 ms (0.019 avg, 0% loss)
+hgx-su00-h16 | 172.16.0.48 : [1], 64 bytes, 0.699 ms (0.749 avg, 0% loss)
+hgx-su00-h16 |
+hgx-su00-h16 | 172.16.0.0  : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.888/0.953/1.02
+hgx-su00-h16 | 172.16.0.16 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.614/0.642/0.671
+hgx-su00-h16 | 172.16.0.32 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.013/0.019/0.026
+hgx-su00-h16 | 172.16.0.48 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.699/0.749/0.799
+################################################################################
+hgx-su00-h24 | 172.16.0.0  : [0], 64 bytes, 1.09 ms (1.09 avg, 0% loss)
+hgx-su00-h24 | 172.16.0.16 : [0], 64 bytes, 0.767 ms (0.767 avg, 0% loss)
+hgx-su00-h24 | 172.16.0.32 : [0], 64 bytes, 0.606 ms (0.606 avg, 0% loss)
+hgx-su00-h24 | 172.16.0.48 : [0], 64 bytes, 0.051 ms (0.051 avg, 0% loss)
+hgx-su00-h24 | 172.16.0.0  : [1], 64 bytes, 0.950 ms (1.02 avg, 0% loss)
+hgx-su00-h24 | 172.16.0.16 : [1], 64 bytes, 0.596 ms (0.682 avg, 0% loss)
+hgx-su00-h24 | 172.16.0.32 : [1], 64 bytes, 0.554 ms (0.580 avg, 0% loss)
+hgx-su00-h24 | 172.16.0.48 : [1], 64 bytes, 0.030 ms (0.040 avg, 0% loss)
+hgx-su00-h24 |
+hgx-su00-h24 | 172.16.0.0  : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.950/1.02/1.09
+hgx-su00-h24 | 172.16.0.16 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.596/0.682/0.767
+hgx-su00-h24 | 172.16.0.32 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.554/0.580/0.606
+hgx-su00-h24 | 172.16.0.48 : xmt/rcv/%loss = 2/2/0%, min/avg/max = 0.030/0.040/0.051
+################################################################################
+```
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -s -c "for ip in $RAILS0; do ping -c2 -W2 \$ip >/dev/null 2>&1 && echo \"PASS \$ip\" || echo \"FAIL \$ip\"; done"
+========================================
+Running: for ip in 172.16.0.0 172.16.0.16 172.16.0.32 172.16.0.48; do ping -c2 -W2 $ip >/dev/null 2>&1 && echo "PASS $ip" || echo "FAIL $ip"; done
+========================================
+################################################################################
+hgx-su00-h00 | PASS 172.16.0.0
+hgx-su00-h00 | PASS 172.16.0.16
+hgx-su00-h00 | PASS 172.16.0.32
+hgx-su00-h00 | PASS 172.16.0.48
+################################################################################
+hgx-su00-h08 | PASS 172.16.0.0
+hgx-su00-h08 | PASS 172.16.0.16
+hgx-su00-h08 | PASS 172.16.0.32
+hgx-su00-h08 | PASS 172.16.0.48
+################################################################################
+hgx-su00-h16 | PASS 172.16.0.0
+hgx-su00-h16 | PASS 172.16.0.16
+hgx-su00-h16 | PASS 172.16.0.32
+hgx-su00-h16 | PASS 172.16.0.48
+################################################################################
+hgx-su00-h24 | PASS 172.16.0.0
+hgx-su00-h24 | PASS 172.16.0.16
+hgx-su00-h24 | PASS 172.16.0.32
+hgx-su00-h24 | PASS 172.16.0.48
+################################################################################
 ```
 
 Expected result:
