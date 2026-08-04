@@ -107,7 +107,7 @@ wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/
 
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
 
-sudo apt update && sudo apt install -y ansible sshpass jq terraform
+sudo apt update && sudo apt install -y ansible sshpass jq terraform haproxy openssl
 ```
 
 ### 2.2 The MetalSoft CLI
@@ -186,6 +186,222 @@ wait_for_job_group() {
 }
 EOFF
 source ~/.bashrc
+```
+
+### 2.5 Make enable proxy for MetalSoft UI
+
+```bash
+sudo tee /usr/local/bin/makeproxy > /dev/null <<'EOF'
+#!/usr/bin/env bash
+#
+# makeproxy - configure this host as an HTTPS reverse proxy using HAProxy.
+#
+# Clients connect to THIS host on 443 using a public-looking FQDN, possibly
+# via an external port-forward (https://fqdn:21021 -> here:443). HAProxy
+# terminates TLS with a self-signed cert for that FQDN, then re-encrypts and
+# forwards to the real backend, verifying the backend cert against system CAs.
+#
+# Usage:
+#   makeproxy <frontend-fqdn> [backend-host] [backend-port]
+#
+set -euo pipefail
+
+# ----- defaults (edit here or pass as arguments) -----
+DEFAULT_BACKEND_HOST="demo.metalsoft.io"
+DEFAULT_BACKEND_PORT="443"
+FRONTEND_PORT="443"
+CERT_DAYS="3650"
+CA_BUNDLE="/etc/ssl/certs/ca-certificates.crt"
+# -----------------------------------------------------
+
+FQDN="${1:-}"
+BACKEND_HOST="${2:-$DEFAULT_BACKEND_HOST}"
+BACKEND_PORT="${3:-$DEFAULT_BACKEND_PORT}"
+ME="$(basename "$0")"
+
+if [[ -z "$FQDN" ]]; then
+    echo "Usage: $ME <frontend-fqdn> [backend-host] [backend-port]" >&2
+    echo "Example: $ME hworker-cf1b78ae.dsx-air.nvidia.com demo.metalsoft.io 443" >&2
+    exit 1
+fi
+
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "ERROR: must be run as root (use sudo)." >&2
+    exit 1
+fi
+
+echo "==> Frontend: https://${FQDN}:${FRONTEND_PORT} (self-signed)"
+echo "==> Backend : https://${BACKEND_HOST}:${BACKEND_PORT} (CA-verified)"
+
+# ----- 1. packages -----
+NEED_PKGS=()
+command -v haproxy >/dev/null 2>&1 || NEED_PKGS+=(haproxy)
+command -v openssl >/dev/null 2>&1 || NEED_PKGS+=(openssl)
+[[ -s "$CA_BUNDLE" ]] || NEED_PKGS+=(ca-certificates)
+
+if [[ ${#NEED_PKGS[@]} -gt 0 ]]; then
+    echo "==> Installing: ${NEED_PKGS[*]}"
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${NEED_PKGS[@]}"
+else
+    echo "==> haproxy, openssl and CA bundle already present"
+fi
+
+# ----- 2. self-signed certificate for the frontend FQDN -----
+CERT_DIR="/etc/haproxy/certs"
+PEM="${CERT_DIR}/${FQDN}.pem"
+mkdir -p "$CERT_DIR"
+chmod 700 "$CERT_DIR"
+
+CERT_OK=0
+if [[ -s "$PEM" ]]; then
+    # 2592000 = 30 days; regenerate if it expires sooner than that
+    if openssl x509 -checkend 2592000 -noout -in "$PEM" >/dev/null 2>&1; then
+        CERT_OK=1
+    fi
+fi
+
+if [[ "$CERT_OK" -eq 1 ]]; then
+    echo "==> Reusing existing valid certificate for ${FQDN}"
+else
+    echo "==> Generating self-signed certificate for ${FQDN}"
+    TMP_KEY="$(mktemp)"
+    TMP_CRT="$(mktemp)"
+    openssl req -x509 -newkey rsa:2048 -sha256 -nodes \
+        -days "$CERT_DAYS" \
+        -keyout "$TMP_KEY" -out "$TMP_CRT" \
+        -subj "/CN=${FQDN}" \
+        -addext "subjectAltName=DNS:${FQDN}" \
+        -addext "extendedKeyUsage=serverAuth" 2>/dev/null
+    cat "$TMP_CRT" "$TMP_KEY" > "$PEM"
+    rm -f "$TMP_KEY" "$TMP_CRT"
+    chmod 600 "$PEM"
+fi
+
+# ----- 3. build the long config values in short pieces -----
+# HAProxy config has no line-continuation syntax: every server option must
+# sit on the one 'server' line. Assembling it here keeps source lines short
+# so nothing breaks if this file is ever copy-pasted through a terminal.
+
+SRV="${BACKEND_HOST}:${BACKEND_PORT}"
+SRV="$SRV ssl sni str(${BACKEND_HOST})"
+SRV="$SRV verify required verifyhost ${BACKEND_HOST}"
+SRV="$SRV ca-file ${CA_BUNDLE}"
+SRV="$SRV check check-sni ${BACKEND_HOST} inter 10s"
+
+# The origin the backend believes it is serving. A port appears in an Origin
+# header only when it is not the scheme default, so 443 is left off.
+ORIGIN="https://${BACKEND_HOST}"
+if [[ "$BACKEND_PORT" != "443" ]]; then
+    ORIGIN="${ORIGIN}:${BACKEND_PORT}"
+fi
+
+# Replace just the scheme+authority of Referer, preserving the path.
+REF_RE='^https?://[^/]*'
+
+# Match absolute redirects the backend issues to its own hostname...
+BACKEND_HOST_RE="${BACKEND_HOST//./\\.}"
+LOC_RE="(?i)^https?://${BACKEND_HOST_RE}(:[0-9]+)?(/.*)?\$"
+# ...and rewrite them to whatever Host the client actually used. \2 is the
+# path capture group; %[var(...)] is resolved by HAProxy at runtime.
+LOC_FMT='https://%[var(txn.orig_host)]\2'
+
+# The backend commonly issues auth/session cookies scoped to its own domain
+# (Domain=.<backend-host>). That domain never matches the frontend FQDN, so
+# browsers silently discard the cookie and every request after login looks
+# unauthenticated. Strip the Domain attribute so the cookie becomes host-only
+# for whatever hostname the client is actually using.
+COOKIE_RE="(?i)^(.*);\\s*Domain=\\.?${BACKEND_HOST_RE}(.*)\$"
+COOKIE_FMT='\1\2'
+
+# ----- 4. write the configuration -----
+CFG="/etc/haproxy/haproxy.cfg"
+BACKUP=""
+if [[ -f "$CFG" ]]; then
+    BACKUP="${CFG}.bak.$(date +%Y%m%d%H%M%S)"
+    cp -a "$CFG" "$BACKUP"
+    echo "==> Backed up existing config to ${BACKUP}"
+fi
+
+cat > "$CFG" <<HAPROXY_EOF
+# Generated by ${ME} on $(date -Is)
+# Frontend ${FQDN}:${FRONTEND_PORT} -> backend ${BACKEND_HOST}:${BACKEND_PORT}
+
+global
+    log /dev/log local0
+    log /dev/log local1 notice
+    chroot /var/lib/haproxy
+    stats socket /run/haproxy/admin.sock mode 660 level admin
+    stats timeout 30s
+    user haproxy
+    group haproxy
+    daemon
+    maxconn 4096
+    ssl-default-bind-options ssl-min-ver TLSv1.2
+    ssl-default-server-options ssl-min-ver TLSv1.2
+
+defaults
+    log     global
+    mode    http
+    option  httplog
+    option  dontlognull
+    option  forwardfor
+    timeout connect 10s
+    timeout client  1h
+    timeout server  1h
+    timeout tunnel  1h
+    timeout http-request 30s
+
+frontend fe_https
+    bind :${FRONTEND_PORT} ssl crt ${PEM} alpn h2,http/1.1
+    # remember the Host the client used, which may carry the
+    # port-forward port (e.g. ${FQDN}:21021)
+    http-request set-var(txn.orig_host) req.hdr(host)
+    default_backend be_upstream
+
+backend be_upstream
+    # present ourselves to the backend as its own hostname
+    http-request set-header Host ${BACKEND_HOST}
+    # make Origin and Referer agree with that Host, or the app rejects the
+    # request as cross-origin. Only rewrite Origin when the client sent one:
+    # adding it would turn a same-origin request into a CORS request.
+    http-request set-header Origin ${ORIGIN} if { req.hdr(origin) -m found }
+    http-request replace-header Referer ${REF_RE} ${ORIGIN}
+    # send redirects back to the address the client is using
+    http-response replace-header Location ${LOC_RE} ${LOC_FMT}
+    # rewrite auth/session cookies to be host-only for the frontend FQDN
+    http-response replace-header Set-Cookie ${COOKIE_RE} ${COOKIE_FMT}
+    server upstream ${SRV}
+HAPROXY_EOF
+
+# ----- 5. validate and (re)start -----
+echo "==> Validating configuration"
+if ! haproxy -c -f "$CFG"; then
+    echo "ERROR: haproxy configuration is invalid" >&2
+    if [[ -n "$BACKUP" ]]; then
+        echo "       restoring ${BACKUP}" >&2
+        cp -a "$BACKUP" "$CFG"
+    else
+        echo "       no previous config to restore" >&2
+    fi
+    exit 1
+fi
+
+echo "==> Enabling and restarting haproxy"
+systemctl enable haproxy >/dev/null 2>&1 || true
+systemctl restart haproxy
+systemctl --no-pager --lines=0 status haproxy | head -3 || true
+
+echo
+echo "==> Done."
+echo "    Point ${FQDN} (or your port-forward) at this host, then open:"
+echo "      https://${FQDN}/"
+echo "      https://${FQDN}:<fwd-port>/   (via port-forward)"
+echo "    Proxied to https://${BACKEND_HOST}:${BACKEND_PORT}"
+echo "    The cert is self-signed; clients must accept or trust it."
+echo "    Cert file: ${PEM}"
+EOF
+sudo chmod +x /usr/local/bin/makeproxy
 ```
 
 ## Part 3: Stage the demo assets
