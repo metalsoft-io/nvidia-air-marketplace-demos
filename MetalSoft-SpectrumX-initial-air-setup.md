@@ -188,7 +188,7 @@ EOFF
 source ~/.bashrc
 ```
 
-### 2.5 Make enable proxy for MetalSoft UI
+### 2.5 Create enable proxy script for MetalSoft UI
 
 ```bash
 sudo tee /usr/local/bin/makeproxy > /dev/null <<'EOF'

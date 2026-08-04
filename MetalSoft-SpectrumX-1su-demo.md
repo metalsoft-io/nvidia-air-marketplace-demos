@@ -255,6 +255,7 @@ Confirm the Site Controller has connected to the Global Controller by running th
 ```bash
 metalcloud-cli site agents 1
 ```
+The expected output should be the following:
 
 ```
 ubuntu@oob-mgmt-server:~$ metalcloud-cli site agents 1
@@ -360,7 +361,7 @@ Validation:
 
 Log in as `cumulus` (the password is read from `switches.1su.yaml`) and capture the baseline, so later steps have something to compare against.
 
-For ease of use there is a validation script named `spcx-run` located in `~/spcx-air/` that can check the current configuration of the switches. An environment variable needs to be exported for the desired topology:
+For ease of use, there is a validation script named `spcx-run` located in `~/spcx-air/` that can check the current configuration of the switches. An environment variable needs to be exported for the desired topology:
 
 ```bash
 export SPCX_INVENTORY=~/spcx-air/inventory.1su.yml

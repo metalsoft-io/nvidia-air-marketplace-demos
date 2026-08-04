@@ -120,7 +120,7 @@ After the lab is loaded, double-click any node in the NVIDIA Air topology view t
 | Global Controller | `root` | `MetalsoftR0cks@$@$` | `ssh -l root 192.168.200.3` |
 | Site Controller | `root` | `MetalsoftR0cks@$@$` | `ssh -l root 192.168.200.2` |
 | MetalSoft web UI | `demo@metalsoft.io` | `MetalsoftR0cks@$@$` | `https://demo.metalsoft.io` |
-| MetalSoft Fabric Manager UI | `demo@metalsoft.io` | `MetalsoftR0cks@$@$` | `https://demo.metalsoft.io:<https>/designer/dashboard` |
+| MetalSoft Fabric Manager UI | `demo@metalsoft.io` | `MetalsoftR0cks@$@$` | `https://demo.metalsoft.io:<https service port>/designer/dashboard` |
 | Cumulus switches | `cumulus` | set in `switches.3tier.yaml` | `ssh cumulus@<switch-ip>` |
 | HGX hosts | `ubuntu` | `nvidia` | `ssh ubuntu@<host-ip>` |
 
@@ -258,6 +258,7 @@ Confirm the Site Controller has connected to the Global Controller by running th
 ```bash
 metalcloud-cli site agents 1
 ```
+The expected output should be the following:
 
 ```
 ubuntu@oob-mgmt-server:~$ metalcloud-cli site agents 1
@@ -364,7 +365,7 @@ Validation:
 
 Log in as `cumulus` (the password is read from `switches.3tier.yaml`) and capture the baseline, so later steps have something to compare against.
 
-For ease of use there is a validation script named `spcx-run` located in `~/spcx-air/` that can check the current configuration of the switches. An environment variable needs to be exported for the desired topology:
+For ease of use, there is a validation script named `spcx-run` located in `~/spcx-air/` that can check the current configuration of the switches. An environment variable needs to be exported for the desired topology:
 
 ```bash
 export SPCX_INVENTORY=~/spcx-air/inventory.3tier.yml
@@ -955,7 +956,7 @@ Compare with the Step 4 baseline, where BGP was not running. This prints the und
 The expected output should be the following:
 
 ```bash
-buntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp summary\""
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp summary\""
 ========================================
 Running: sudo vtysh -c "show bgp summary"
 ========================================
@@ -1260,22 +1261,22 @@ metalcloud_infrastructure.infra: Creating...
 metalcloud_infrastructure.infra: Creation complete after 0s
 metalcloud_logical_network.network1: Creating...
 metalcloud_logical_network.network1: Creation complete after 0s [name=network1]
-metalcloud_endpoint_instance_group.hgx-su00-h00: Creating...
-metalcloud_endpoint_instance_group.hgx-su00-h00: Creation complete after 0s
-metalcloud_endpoint_instance_group.hgx-su00-h08: Creating...
-metalcloud_endpoint_instance_group.hgx-su00-h08: Creation complete after 0s
-metalcloud_endpoint_instance_group.hgx-su00-h16: Creating...
-metalcloud_endpoint_instance_group.hgx-su00-h16: Creation complete after 0s
-metalcloud_endpoint_instance_group.hgx-su00-h24: Creating...
-metalcloud_endpoint_instance_group.hgx-su00-h24: Creation complete after 1s
-metalcloud_endpoint_instance_group.hgx-su01-h00: Creating...
-metalcloud_endpoint_instance_group.hgx-su01-h00: Creation complete after 0s
-metalcloud_endpoint_instance_group.hgx-su01-h08: Creating...
-metalcloud_endpoint_instance_group.hgx-su01-h08: Creation complete after 0s
-metalcloud_endpoint_instance_group.hgx-su01-h16: Creating...
-metalcloud_endpoint_instance_group.hgx-su01-h16: Creation complete after 0s
-metalcloud_endpoint_instance_group.hgx-su01-h24: Creating...
-metalcloud_endpoint_instance_group.hgx-su01-h24: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-pod00-su00-h00: Creating...
+metalcloud_endpoint_instance_group.hgx-pod00-su00-h00: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-pod00-su00-h08: Creating...
+metalcloud_endpoint_instance_group.hgx-pod00-su00-h08: Creation complete after 1s
+metalcloud_endpoint_instance_group.hgx-pod00-su00-h16: Creating...
+metalcloud_endpoint_instance_group.hgx-pod00-su00-h16: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-pod00-su00-h24: Creating...
+metalcloud_endpoint_instance_group.hgx-pod00-su00-h24: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-pod01-su00-h00: Creating...
+metalcloud_endpoint_instance_group.hgx-pod01-su00-h00: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-pod01-su00-h08: Creating...
+metalcloud_endpoint_instance_group.hgx-pod01-su00-h08: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-pod01-su00-h16: Creating...
+metalcloud_endpoint_instance_group.hgx-pod01-su00-h16: Creation complete after 0s
+metalcloud_endpoint_instance_group.hgx-pod01-su00-h24: Creating...
+metalcloud_endpoint_instance_group.hgx-pod01-su00-h24: Creation complete after 1s
 metalcloud_infrastructure_deployer.infrastructure_deployer: Creating...
 metalcloud_infrastructure_deployer.infrastructure_deployer: Creation complete after 0s
 
@@ -1610,20 +1611,6 @@ ssp-group00-s03 | View/Vrf tenant1 is unknown
 ```
 
 ```bash
-OUTPUT NEEDED HERE
-```
-
-`tenant1` appears in the VRF list, the host-facing `swp` ports carry their `172.x` rail gateway `/31`s inside it, and the VRF routing table holds both the local rail subnets and the remote ones learned over EVPN, including the rails in the other POD reached across the super-spine tier.
-
-Neither the spines nor the super-spines hold the tenant VRF; that lives on the leaves. On the super-spine overlay relay you can see the type-5 host routes it re-advertises:
-
-```bash
-~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp l2vpn evpn route type prefix\""
-```
-
-The expected output should be the following:
-
-```bash
 ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show ip route vrf tenant1\""
 ========================================
 Running: sudo vtysh -c "show ip route vrf tenant1"
@@ -1696,6 +1683,278 @@ ssp-group00-s01 | % VRF tenant1 not found
 ssp-group00-s02 | % VRF tenant1 not found
 ################################################################################
 ssp-group00-s03 | % VRF tenant1 not found
+################################################################################
+```
+
+`tenant1` appears in the VRF list, the host-facing `swp` ports carry their `172.x` rail gateway `/31`s inside it, and the VRF routing table holds both the local rail subnets and the remote ones learned over EVPN, including the rails in the other POD reached across the super-spine tier.
+
+Neither the spines nor the super-spines hold the tenant VRF; that lives on the leaves. On the super-spine overlay relay you can see the type-5 host routes it re-advertises:
+
+```bash
+~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp l2vpn evpn route type prefix\""
+```
+
+The expected output should be the following:
+
+```bash
+ubuntu@oob-mgmt-server:~/nvidia$ ~/spcx-air/spcx-run -c "sudo vtysh -c \"show bgp l2vpn evpn route type prefix\""
+========================================
+Running: sudo vtysh -c "show bgp l2vpn evpn route type prefix"
+========================================
+################################################################################
+leaf-pod00-su00-r0 | BGP table version is 18, local router ID is 10.253.128.1
+leaf-pod00-su00-r0 | Status codes: s suppressed, d damped, h history, * valid, > best, i - internal
+leaf-pod00-su00-r0 | Origin codes: i - IGP, e - EGP, ? - incomplete
+leaf-pod00-su00-r0 | EVPN type-1 prefix: [1]:[EthTag]:[ESI]:[IPlen]:[VTEP-IP]:[Frag-id]
+leaf-pod00-su00-r0 | EVPN type-2 prefix: [2]:[EthTag]:[MAClen]:[MAC]:[IPlen]:[IP]
+leaf-pod00-su00-r0 | EVPN type-3 prefix: [3]:[EthTag]:[IPlen]:[OrigIP]
+leaf-pod00-su00-r0 | EVPN type-4 prefix: [4]:[ESI]:[IPlen]:[OrigIP]
+leaf-pod00-su00-r0 | EVPN type-5 prefix: [5]:[EthTag]:[IPlen]:[IP]
+leaf-pod00-su00-r0 |
+leaf-pod00-su00-r0 |    Network          Next Hop            Metric LocPrf Weight Path
+leaf-pod00-su00-r0 |                     Extended Community
+leaf-pod00-su00-r0 | Route Distinguisher: 10.253.128.1:19999
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.16.0.0] RD 10.253.128.1:19999
+leaf-pod00-su00-r0 |                     10.253.128.1 (leaf-pod00-su00-r0)
+leaf-pod00-su00-r0 |                                              0         32768 ?
+leaf-pod00-su00-r0 |                     ET:8 RT:59904:19999 Rmac:44:38:39:22:01:cd
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.24.0.0] RD 10.253.128.1:19999
+leaf-pod00-su00-r0 |                     10.253.128.1 (leaf-pod00-su00-r0)
+leaf-pod00-su00-r0 |                                              0         32768 ?
+leaf-pod00-su00-r0 |                     ET:8 RT:59904:19999 Rmac:44:38:39:22:01:cd
+leaf-pod00-su00-r0 | Route Distinguisher: 10.253.128.2:19999
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.18.0.0] RD 10.253.128.2:19999
+leaf-pod00-su00-r0 |                     10.253.128.2 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000001 ?
+leaf-pod00-su00-r0 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.18.0.0] RD 10.253.128.2:19999
+leaf-pod00-su00-r0 |                     10.253.128.2 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000001 ?
+leaf-pod00-su00-r0 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.26.0.0] RD 10.253.128.2:19999
+leaf-pod00-su00-r0 |                     10.253.128.2 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000001 ?
+leaf-pod00-su00-r0 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.26.0.0] RD 10.253.128.2:19999
+leaf-pod00-su00-r0 |                     10.253.128.2 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000001 ?
+leaf-pod00-su00-r0 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+leaf-pod00-su00-r0 | Route Distinguisher: 10.253.128.3:19999
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.20.0.0] RD 10.253.128.3:19999
+leaf-pod00-su00-r0 |                     10.253.128.3 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000002 ?
+leaf-pod00-su00-r0 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.20.0.0] RD 10.253.128.3:19999
+leaf-pod00-su00-r0 |                     10.253.128.3 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000002 ?
+leaf-pod00-su00-r0 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.28.0.0] RD 10.253.128.3:19999
+leaf-pod00-su00-r0 |                     10.253.128.3 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000002 ?
+leaf-pod00-su00-r0 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.28.0.0] RD 10.253.128.3:19999
+leaf-pod00-su00-r0 |                     10.253.128.3 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000002 ?
+leaf-pod00-su00-r0 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+leaf-pod00-su00-r0 | Route Distinguisher: 10.253.128.4:19999
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.22.0.0] RD 10.253.128.4:19999
+leaf-pod00-su00-r0 |                     10.253.128.4 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000003 ?
+leaf-pod00-su00-r0 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.22.0.0] RD 10.253.128.4:19999
+leaf-pod00-su00-r0 |                     10.253.128.4 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000003 ?
+leaf-pod00-su00-r0 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.30.0.0] RD 10.253.128.4:19999
+leaf-pod00-su00-r0 |                     10.253.128.4 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000003 ?
+leaf-pod00-su00-r0 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.30.0.0] RD 10.253.128.4:19999
+leaf-pod00-su00-r0 |                     10.253.128.4 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000003 ?
+leaf-pod00-su00-r0 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+leaf-pod00-su00-r0 | Route Distinguisher: 10.253.128.5:19999
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.16.1.0] RD 10.253.128.5:19999
+leaf-pod00-su00-r0 |                     10.253.128.5 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000004 ?
+leaf-pod00-su00-r0 |                     RT:59908:19999 ET:8 Rmac:44:38:39:22:01:d1
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.16.1.0] RD 10.253.128.5:19999
+leaf-pod00-su00-r0 |                     10.253.128.5 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000004 ?
+leaf-pod00-su00-r0 |                     RT:59908:19999 ET:8 Rmac:44:38:39:22:01:d1
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.24.1.0] RD 10.253.128.5:19999
+leaf-pod00-su00-r0 |                     10.253.128.5 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000004 ?
+leaf-pod00-su00-r0 |                     RT:59908:19999 ET:8 Rmac:44:38:39:22:01:d1
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.24.1.0] RD 10.253.128.5:19999
+leaf-pod00-su00-r0 |                     10.253.128.5 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000004 ?
+leaf-pod00-su00-r0 |                     RT:59908:19999 ET:8 Rmac:44:38:39:22:01:d1
+leaf-pod00-su00-r0 | Route Distinguisher: 10.253.128.6:19999
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.18.1.0] RD 10.253.128.6:19999
+leaf-pod00-su00-r0 |                     10.253.128.6 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000005 ?
+leaf-pod00-su00-r0 |                     RT:59909:19999 ET:8 Rmac:44:38:39:22:01:d2
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.18.1.0] RD 10.253.128.6:19999
+leaf-pod00-su00-r0 |                     10.253.128.6 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000005 ?
+leaf-pod00-su00-r0 |                     RT:59909:19999 ET:8 Rmac:44:38:39:22:01:d2
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.26.1.0] RD 10.253.128.6:19999
+leaf-pod00-su00-r0 |                     10.253.128.6 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000005 ?
+leaf-pod00-su00-r0 |                     RT:59909:19999 ET:8 Rmac:44:38:39:22:01:d2
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.26.1.0] RD 10.253.128.6:19999
+leaf-pod00-su00-r0 |                     10.253.128.6 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000005 ?
+leaf-pod00-su00-r0 |                     RT:59909:19999 ET:8 Rmac:44:38:39:22:01:d2
+leaf-pod00-su00-r0 | Route Distinguisher: 10.253.128.7:19999
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.20.1.0] RD 10.253.128.7:19999
+leaf-pod00-su00-r0 |                     10.253.128.7 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000006 ?
+leaf-pod00-su00-r0 |                     RT:59910:19999 ET:8 Rmac:44:38:39:22:01:d3
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.20.1.0] RD 10.253.128.7:19999
+leaf-pod00-su00-r0 |                     10.253.128.7 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000006 ?
+leaf-pod00-su00-r0 |                     RT:59910:19999 ET:8 Rmac:44:38:39:22:01:d3
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.28.1.0] RD 10.253.128.7:19999
+leaf-pod00-su00-r0 |                     10.253.128.7 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000006 ?
+leaf-pod00-su00-r0 |                     RT:59910:19999 ET:8 Rmac:44:38:39:22:01:d3
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.28.1.0] RD 10.253.128.7:19999
+leaf-pod00-su00-r0 |                     10.253.128.7 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000006 ?
+leaf-pod00-su00-r0 |                     RT:59910:19999 ET:8 Rmac:44:38:39:22:01:d3
+leaf-pod00-su00-r0 | Route Distinguisher: 10.253.128.8:19999
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.22.1.0] RD 10.253.128.8:19999
+leaf-pod00-su00-r0 |                     10.253.128.8 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000007 ?
+leaf-pod00-su00-r0 |                     RT:59911:19999 ET:8 Rmac:44:38:39:22:01:d4
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.22.1.0] RD 10.253.128.8:19999
+leaf-pod00-su00-r0 |                     10.253.128.8 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000007 ?
+leaf-pod00-su00-r0 |                     RT:59911:19999 ET:8 Rmac:44:38:39:22:01:d4
+leaf-pod00-su00-r0 |  *> [5]:[0]:[26]:[172.30.1.0] RD 10.253.128.8:19999
+leaf-pod00-su00-r0 |                     10.253.128.8 (ssp-group00-s00)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000007 ?
+leaf-pod00-su00-r0 |                     RT:59911:19999 ET:8 Rmac:44:38:39:22:01:d4
+leaf-pod00-su00-r0 |  *  [5]:[0]:[26]:[172.30.1.0] RD 10.253.128.8:19999
+leaf-pod00-su00-r0 |                     10.253.128.8 (ssp-group00-s01)
+leaf-pod00-su00-r0 |                                                            0 4202000000 4200000007 ?
+leaf-pod00-su00-r0 |                     RT:59911:19999 ET:8 Rmac:44:38:39:22:01:d4
+leaf-pod00-su00-r0 |
+leaf-pod00-su00-r0 | Displayed 16 prefixes (30 paths) (of requested type)
+################################################################################
+
+################################################################################
+spine-pod00-r0-s00 | No EVPN prefixes (of requested type) exist
+################################################################################
+spine-pod00-r1-s00 | No EVPN prefixes (of requested type) exist
+################################################################################
+spine-pod00-r2-s00 | No EVPN prefixes (of requested type) exist
+################################################################################
+spine-pod00-r3-s00 | No EVPN prefixes (of requested type) exist
+################################################################################
+spine-pod01-r0-s00 | No EVPN prefixes (of requested type) exist
+################################################################################
+spine-pod01-r1-s00 | No EVPN prefixes (of requested type) exist
+################################################################################
+spine-pod01-r2-s00 | No EVPN prefixes (of requested type) exist
+################################################################################
+spine-pod01-r3-s00 | No EVPN prefixes (of requested type) exist
+################################################################################
+
+################################################################################
+ssp-group00-s00 | BGP table version is 18, local router ID is 10.253.128.17
+ssp-group00-s00 | Status codes: s suppressed, d damped, h history, * valid, > best, i - internal
+ssp-group00-s00 | Origin codes: i - IGP, e - EGP, ? - incomplete
+ssp-group00-s00 | EVPN type-1 prefix: [1]:[EthTag]:[ESI]:[IPlen]:[VTEP-IP]:[Frag-id]
+ssp-group00-s00 | EVPN type-2 prefix: [2]:[EthTag]:[MAClen]:[MAC]:[IPlen]:[IP]
+ssp-group00-s00 | EVPN type-3 prefix: [3]:[EthTag]:[IPlen]:[OrigIP]
+ssp-group00-s00 | EVPN type-4 prefix: [4]:[ESI]:[IPlen]:[OrigIP]
+ssp-group00-s00 | EVPN type-5 prefix: [5]:[EthTag]:[IPlen]:[IP]
+ssp-group00-s00 |
+ssp-group00-s00 |    Network          Next Hop            Metric LocPrf Weight Path
+ssp-group00-s00 |                     Extended Community
+ssp-group00-s00 | Route Distinguisher: 10.253.128.1:19999
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.16.0.0] RD 10.253.128.1:19999
+ssp-group00-s00 |                     10.253.128.1 (leaf-pod00-su00-r0)
+ssp-group00-s00 |                                              0             0 4200000000 ?
+ssp-group00-s00 |                     RT:59904:19999 ET:8 Rmac:44:38:39:22:01:cd
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.24.0.0] RD 10.253.128.1:19999
+ssp-group00-s00 |                     10.253.128.1 (leaf-pod00-su00-r0)
+ssp-group00-s00 |                                              0             0 4200000000 ?
+ssp-group00-s00 |                     RT:59904:19999 ET:8 Rmac:44:38:39:22:01:cd
+ssp-group00-s00 | Route Distinguisher: 10.253.128.2:19999
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.18.0.0] RD 10.253.128.2:19999
+ssp-group00-s00 |                     10.253.128.2 (leaf-pod00-su00-r1)
+ssp-group00-s00 |                                              0             0 4200000001 ?
+ssp-group00-s00 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.26.0.0] RD 10.253.128.2:19999
+ssp-group00-s00 |                     10.253.128.2 (leaf-pod00-su00-r1)
+ssp-group00-s00 |                                              0             0 4200000001 ?
+ssp-group00-s00 |                     RT:59905:19999 ET:8 Rmac:44:38:39:22:01:ce
+ssp-group00-s00 | Route Distinguisher: 10.253.128.3:19999
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.20.0.0] RD 10.253.128.3:19999
+ssp-group00-s00 |                     10.253.128.3 (leaf-pod00-su00-r2)
+ssp-group00-s00 |                                              0             0 4200000002 ?
+ssp-group00-s00 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.28.0.0] RD 10.253.128.3:19999
+ssp-group00-s00 |                     10.253.128.3 (leaf-pod00-su00-r2)
+ssp-group00-s00 |                                              0             0 4200000002 ?
+ssp-group00-s00 |                     RT:59906:19999 ET:8 Rmac:44:38:39:22:01:cf
+ssp-group00-s00 | Route Distinguisher: 10.253.128.4:19999
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.22.0.0] RD 10.253.128.4:19999
+ssp-group00-s00 |                     10.253.128.4 (leaf-pod00-su00-r3)
+ssp-group00-s00 |                                              0             0 4200000003 ?
+ssp-group00-s00 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.30.0.0] RD 10.253.128.4:19999
+ssp-group00-s00 |                     10.253.128.4 (leaf-pod00-su00-r3)
+ssp-group00-s00 |                                              0             0 4200000003 ?
+ssp-group00-s00 |                     RT:59907:19999 ET:8 Rmac:44:38:39:22:01:d0
+ssp-group00-s00 | Route Distinguisher: 10.253.128.5:19999
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.16.1.0] RD 10.253.128.5:19999
+ssp-group00-s00 |                     10.253.128.5 (leaf-pod01-su00-r0)
+ssp-group00-s00 |                                              0             0 4200000004 ?
+ssp-group00-s00 |                     RT:59908:19999 ET:8 Rmac:44:38:39:22:01:d1
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.24.1.0] RD 10.253.128.5:19999
+ssp-group00-s00 |                     10.253.128.5 (leaf-pod01-su00-r0)
+ssp-group00-s00 |                                              0             0 4200000004 ?
+ssp-group00-s00 |                     RT:59908:19999 ET:8 Rmac:44:38:39:22:01:d1
+ssp-group00-s00 | Route Distinguisher: 10.253.128.6:19999
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.18.1.0] RD 10.253.128.6:19999
+ssp-group00-s00 |                     10.253.128.6 (leaf-pod01-su00-r1)
+ssp-group00-s00 |                                              0             0 4200000005 ?
+ssp-group00-s00 |                     RT:59909:19999 ET:8 Rmac:44:38:39:22:01:d2
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.26.1.0] RD 10.253.128.6:19999
+ssp-group00-s00 |                     10.253.128.6 (leaf-pod01-su00-r1)
+ssp-group00-s00 |                                              0             0 4200000005 ?
+ssp-group00-s00 |                     RT:59909:19999 ET:8 Rmac:44:38:39:22:01:d2
+ssp-group00-s00 | Route Distinguisher: 10.253.128.7:19999
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.20.1.0] RD 10.253.128.7:19999
+ssp-group00-s00 |                     10.253.128.7 (leaf-pod01-su00-r2)
+ssp-group00-s00 |                                              0             0 4200000006 ?
+ssp-group00-s00 |                     RT:59910:19999 ET:8 Rmac:44:38:39:22:01:d3
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.28.1.0] RD 10.253.128.7:19999
+ssp-group00-s00 |                     10.253.128.7 (leaf-pod01-su00-r2)
+ssp-group00-s00 |                                              0             0 4200000006 ?
+ssp-group00-s00 |                     RT:59910:19999 ET:8 Rmac:44:38:39:22:01:d3
+ssp-group00-s00 | Route Distinguisher: 10.253.128.8:19999
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.22.1.0] RD 10.253.128.8:19999
+ssp-group00-s00 |                     10.253.128.8 (leaf-pod01-su00-r3)
+ssp-group00-s00 |                                              0             0 4200000007 ?
+ssp-group00-s00 |                     RT:59911:19999 ET:8 Rmac:44:38:39:22:01:d4
+ssp-group00-s00 |  *> [5]:[0]:[26]:[172.30.1.0] RD 10.253.128.8:19999
+ssp-group00-s00 |                     10.253.128.8 (leaf-pod01-su00-r3)
+ssp-group00-s00 |                                              0             0 4200000007 ?
+ssp-group00-s00 |                     RT:59911:19999 ET:8 Rmac:44:38:39:22:01:d4
+ssp-group00-s00 |
+ssp-group00-s00 | Displayed 16 prefixes (16 paths) (of requested type)
+################################################################################
+
+################################################################################
+ssp-group00-s02 | No EVPN prefixes (of requested type) exist
+################################################################################
+ssp-group00-s03 | No EVPN prefixes (of requested type) exist
 ################################################################################
 ```
 
