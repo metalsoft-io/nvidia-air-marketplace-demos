@@ -1988,6 +1988,15 @@ metalcloud_infrastructure_deployer.infrastructure_deployer_tenant2: Creation com
 Apply complete! Resources: 2 added, 1 changed, 1 destroyed.
 ```
 
+Before continuing with the checks, confirm that the Terraform deployments have finished. The following command refreshes every 10 seconds; leave it running until the deploy status shows finished:
+
+```bash
+watch -n 10 "metalcloud-cli infrastructure list"
+```
+Use control+C to stop the watch at any time.
+
+The expected output should be the following:
+
 ```bash
 ┌────┬──────────────────┬──────────────────┬────────┬───────┬──────┬─────────────────────┬─────────────────────┬───────────────┬───────────┐
 │ ID │ LABEL            │ CONFIG LABEL     │ STATUS │ OWNER │ SITE │ CREATED             │ UPDATED             │ DEPLOY STATUS │ DEPLOY ID │
