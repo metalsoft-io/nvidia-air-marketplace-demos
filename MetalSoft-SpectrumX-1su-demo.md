@@ -6,7 +6,7 @@ MetalSoft is an intelligent orchestration platform that transforms fragmented on
 
 This lab builds a single scalability-unit (256 GPU) NVIDIA Spectrum-X fabric from a clean state and attaches a tenant to it, using the MetalSoft CLI (`metalcloud-cli`) and Terraform. The fabric is a two-tier leaf-spine design running EVPN over eBGP on Cumulus Linux 5.14.0.
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/1su-partial.png)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/topology.1su.png)
 
 The lab is preconfigured: it launches from a stored MetalSoft Spectrum-X checkpoint with the Global Controller, Site Controller, and Cumulus Linux switches already running and the CLI toolkit already staged on the jumpstation. You perform the fabric build, switch configuration, and tenant onboarding yourself during the lab; nothing is pre-built for you.
 
@@ -151,8 +151,8 @@ NVIDIA Air returns an external host name and port for the service. Connect to it
 ```bash
 ubuntu@oob-mgmt-server:~$ cd nvidia/
 ubuntu@oob-mgmt-server:~/nvidia$ ls
-cumulus-5.14-templates  ethernet-fabric.1su.yaml       l3-profile.1su.yaml  oob-subnet.1su.yaml    switches.1su.yaml
-endpoints.1su.yaml      fabric-config.1su.l3evpn.yaml  netplan              route-domain.1su.yaml  terraform
+cumulus-5.14-templates  ethernet-fabric.1su.yaml       l3-profile-tenant1.1su.yaml  netplan              route-domain-tenant1.1su.yaml  switches.1su.yaml
+endpoints.1su.yaml      fabric-config.1su.l3evpn.yaml  l3-profile-tenant2.1su.yaml  oob-subnet.1su.yaml  route-domain-tenant2.1su.yaml  terraform
 ubuntu@oob-mgmt-server:~/nvidia$
 ```
 
@@ -170,7 +170,7 @@ In NVIDIA Air, there should already be a MetalSoft UI service enabled.
 
 NVIDIA Air returns an external host name and port for the service (for example `worker-0375f999.dsx-air.nvidia.com` and `25990`). Note both; NVIDIA Air assigns a new external port on each restart.
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/MetalSoft%20UI%20service.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/metalsoft-https-service.webp)
 
 Connect via SSH into the `oob-mgmt-server` from your local machine or using the integrated web console. Then enable the proxy service for the external host name:
 
@@ -216,7 +216,7 @@ In case an error with `503 Service Unavailable` is displayed, that means that no
 
 Once logged in, you can reach every MetalSoft component from the "burger" menu at the top left, next to the logo:
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2016.50.27.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/admin-ui.webp)
 
 | __Component__ | __Comments__ | __URL__ |
 | -------------- | -------------- | -------- |
@@ -302,7 +302,7 @@ Validation:
 
 - (Optional) In the web UI, open the Fabric Manager to see the fabric that was created.
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2017.16.17.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/fabric.1su.webp)
 
 ### Step 3. Import the Switches
 
@@ -326,9 +326,9 @@ Expected result:
 
 Validation:
 
-- (Optional) In the web UI, navigate to **Fabric Manager > Network devices** where equipment list shows the imported switches (the exact count may differ from the screenshot below):
+- (Optional) In the web UI, navigate to **Fabric Manager > Network devices** where equipment list shows the imported switches:
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2016.52.36.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/network-devices.1su.webp)
 
 ### Step 4. Discover Switch Interfaces
 
@@ -675,7 +675,7 @@ Each fabric-facing port lists the neighbour it discovered: a leaf sees its spine
 
 - (Optional) In the web UI, navigate to **Fabric Manager > Fabrics > Select the desired fabric (spectrumx-1su-514) > Topology** where the Fabric View should look like this:
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2016.59.20.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/fabric-topology.1su.webp)
 
 ### Step 8. Register the Fabric Templates
 
@@ -707,7 +707,7 @@ Validation:
 
 - (Optional) In the web UI, the registered templates appear under **Fabric Manager > Configuration Libraries > Network Device Configuration Templates**:
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2017.00.42.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/configuration_templates.webp)
 
 ### Step 9. Deploy the Fabric
 
@@ -1071,11 +1071,11 @@ Validation:
 
 - (Optional) In the web UI, the tenant infrastructures are visible in the Infrastructure Designer. Navigate to **Admin dashboard > Infrastructures**, select one infrastructure and click **Open infrastructure designer**. This opens the Infrastructure Designer, where you can see the graphical representation of the infrastructure:
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2017.40.09.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/infrastructures.webp)
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2017.40.22.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/open-infrastructure.webp)
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2017.40.39.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/tenant1.1su.webp)
 
 Terraform created the tenant VRFs, attached the endpoints and deployed. The tenant VRFs and the host rail gateways live on the leaves. Inspect a leaf:
 
@@ -1254,7 +1254,7 @@ leaf-su00-r0 | B>* 172.28.0.0/26 [20/0] via 10.253.128.3, vlan1440_l3 onlink, we
 leaf-su00-r0 | B>* 172.30.0.0/26 [20/0] via 10.253.128.4, vlan1440_l3 onlink, weight 1, 00:03:20
 ```
 
-`tenant1` appears in the VRF list, the host-facing `swp` ports carry their `172.x` rail gateway `/31`s inside it, and the VRF routing table holds both the local rail subnets and the remote ones learned over EVPN.
+`tenant1` appears in the VRF list, the host-facing `swp` ports carry their `172.x` rail gateway `/31`s inside it and the VRF routing table holds both the local rail subnets and the remote ones learned over EVPN.
 
 ```bash
 ~/spcx-air/spcx-run -c "ip -br addr show vrf tenant2 | grep -E \"swp|172\.\""
@@ -1925,7 +1925,7 @@ The expected output should be the following:
 
 (Optional) In the web UI, navigate to **Admin dashboard > Infrastructures** in order to see the current progress state of the deployment:
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-14%20at%2011.12.49.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/infrastructure_state.webp)
 
 Modify the terraform manifest from `~/nvidia/terraform/tenant2` in order to add `hgx-su00-h16` to `infra-tenant2` infrastructure and apply. Use the following commands in order to modify `infra-tenant2.tf` directly:
 
@@ -2008,9 +2008,9 @@ The expected output should be the following:
 
 After `hgx-su00-h16` has been moved from `tenant1` infrastructure to `tenant2` infrastructure, the graphical representation of two infrastructures will look like the following:
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2017.56.42.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/tenant1-without-h16.1su.webp)
 
-![](https://assets.dsx-air.nvidia.com/demo-images/23cc9903-0fab-4c06-a04c-71abac498fd6/Screenshot%202026-08-13%20at%2017.57.14.webp)
+![](https://assets.dsx-air.nvidia.com/demo-images/430981a5-a04b-4355-9a37-e70f3f98844b/tenant2-with-h16.1su.webp)
 
 Verify connectivity after `hgx-su00-h16` was moved to `tenant2` infrastructure:
 
